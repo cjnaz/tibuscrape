@@ -1,0 +1,115 @@
+#!/usr/bin/env python
+#==========================================================
+#
+desc = """Titanium Backup Scraper."""
+#  Chris Nelson, Jan 2019
+#
+# Accumulate .apk.gz versions from the TiBU dir into the archive dir.
+# For each .apk.gz version, capture the latest .properties and .tar.gz file pair associated
+#   with each .apk.gz version, deleting older .properties and .tar.gz file pairs
+#
+# 190101  New
+#
+# Changes pending
+#   
+#==========================================================
+
+import argparse
+import os.path
+import glob
+import shutil
+import time
+
+# Configs / Constants
+TIBU_PATH = "/<path to>/Dropbox/TiBU/"
+ARCHIVE_PATH = "/<path to>/TiBuScrapeArchive/"
+
+# Example TiBU backup filenames:
+# com.coinbase.android-a952de85ca2328a963c79c7ecbbc6588.apk.gz
+# com.coinbase.android-20181231-040413.properties
+# com.coinbase.android-20181231-040413.tar.gz
+
+def main():
+
+    backups = {}
+    cnt_apks = 0
+    cnt_deletes = 0
+    cnt_adds = 0
+
+
+    apks = glob.glob(TIBU_PATH + "*.apk.gz")
+    for apk_full_tibu_path in apks:
+
+        if not os.path.exists(ARCHIVE_PATH + os.path.basename(apk_full_tibu_path)):
+            if verbose:
+                print ("Saving new  <{}>".format(os.path.basename(apk_full_tibu_path)))
+            cnt_apks += 1
+            if not dry_run:
+                shutil.copy2(apk_full_tibu_path, ARCHIVE_PATH)  # copy2 retains the mod time
+
+        apk_mtime = os.stat(apk_full_tibu_path).st_mtime
+        key = os.path.basename(apk_full_tibu_path).split('-')[0]
+ 
+        if key not in backups:
+            backups[key] = {"mtime" : apk_mtime}
+        else:
+            if apk_mtime > backups[key]["mtime"]:
+                backups[key]["mtime"] = apk_mtime
+        
+
+    for key in backups:
+        # print ("{}  -  {}".format(time.asctime(time.localtime(backups[key]["mtime"])), key))
+        latestpropfile = ''
+        latestpropfile_mtime = 0
+
+        propfiles = glob.glob(TIBU_PATH + key + "-*.properties")    # find latest .properties file
+        for propfile in propfiles:
+            propfile_mtime = os.stat(propfile).st_mtime
+            if propfile_mtime > latestpropfile_mtime:
+                latestpropfile = propfile
+                latestpropfile_mtime = propfile_mtime
+        # print ("{}  -  {}".format(time.asctime(time.localtime(latestpropfile_mtime)), latestpropfile))
+
+
+        # Delete any .properties (and matching .tar.gz) files newer than the latest .apk.gz but older than the latest TiBU backup version.
+        archive_propfiles = glob.glob(ARCHIVE_PATH + key + "-*.properties")
+        for propfile in archive_propfiles:
+            propfile_mtime = os.stat(propfile).st_mtime
+            if propfile_mtime > backups[key]["mtime"] and propfile_mtime < latestpropfile_mtime:
+                cnt_deletes += 1
+                if verbose:
+                    print ("Removing not latest .properties and .tar.gz files for <{}>".format(propfile.replace(".properties", "")))
+                if not dry_run:
+                    os.remove(propfile)
+                    os.remove(propfile.replace(".properties", ".tar.gz"))
+
+
+        # Archive the latest .properties and .tar.gz files
+        if not os.path.exists(ARCHIVE_PATH + os.path.basename(latestpropfile)):
+            cnt_adds += 1
+            if verbose:
+                print ("Saving latest       .properties and .tar.gz files for <{}>".format(latestpropfile.replace(".properties", "")))
+            if not dry_run:
+                shutil.copy2 (latestpropfile, ARCHIVE_PATH)
+                shutil.copy2 (latestpropfile.replace(".properties", ".tar.gz"), ARCHIVE_PATH)
+        
+    print ("Final talley:\n  {:>4} new .apks saved \n  {:>4} deleted .properties / .tar.gz pairs \n  {:>4}   saved .properties / .tar.gz pairs".format(
+        cnt_apks, cnt_deletes, cnt_adds))
+    
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=desc, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('-n', '--dry-run',
+                        help="Go through the motions, but copy/delete no files.",
+                        action='store_true')
+    parser.add_argument('-v', '--verbose',
+                        help="Print activity messages.",
+                        action='store_true')
+    args = parser.parse_args()
+
+    verbose = args.verbose
+    dry_run = args.dry_run
+    if dry_run:
+        verbose = True
+
+    main()
