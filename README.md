@@ -2,7 +2,8 @@
 
 tibuscrape creates an archive of the versions of apps and their latest data files from your Titanium Backup.  
 
-Each time that you update an app on your phone, TiBU normally creates a backup of the .apk file and the associated data files (.properties and .tar.gz).  Each successive TiBU run creates new data files up to your rolling "Max backup history" setting, and after that number of runs the older .apk version and it's data files are deleted forever.  
+Each time that you update an app on your phone, TiBU normally creates a backup of the .apk file and the associated data files (.properties and .tar.gz).
+Each successive TiBU run creates new data files up to your rolling "Max backup history" setting, and after that number of runs the older .apk version and it's data files are deleted forever.  
 
 For example, I have "Max backup history" set to 4 and run the backup nightly.  This means that if I update an app I only have up to four days to find out that I'd rather stay on the older version.
 
@@ -11,9 +12,9 @@ This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or
 ## Setup and usage notes
 - tibuscrape runs on Linux or Windows (tested on Python 2.7 and 3.6).  
 - tibuscrape does not talk directly to the cloud service; rather, it relies on a local copy of the TiBU backup directory usually created by a local cloud sync agent or synced copies created by rclonesync or rclone.
-- Configure the `TIBU_PATH` and `ARCHIVE_PATH` vars in the script.
+- Configure the `TIBU_PATH` and `ARCHIVE_PATH` vars in the script, or use the command line -T and -A switches.
 - Manually create the target archive directory.
-- Periodically, manually delete older archived app versions and their data files.  File creation dates are preserved in the archive, so its obvious which files are older when sorting by date.
+- Periodically, manually delete older archived app versions and their data files.  Run tibuscrape with the `--dry-run` switch to get a dump of the contents of the backup and archive contents.
 - Consider setting up a CRON job to run tibuscrape some time after your scheduled Titanium Backup and Dropbox sync run.  Example CRON:
 
 ```
@@ -27,44 +28,66 @@ This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or
 
 ```
 $ ./tibuscrape -h
-usage: tibuscrape.py [-h] [-n] [-v]
+usage: tibuscrape [-h] [-T TIBU_PATH] [-A ARCHIVE_PATH] [-n] [-v] [-V]
 
-Titanium Backup Scraper.
+Titanium Backup Scraper
 
 optional arguments:
-  -h, --help     show this help message and exit
-  -n, --dry-run  Go through the motions, but copy/delete no files.
-  -v, --verbose  Print activity messages.
+  -h, --help            show this help message and exit
+  -T TIBU_PATH, --tibu-path TIBU_PATH
+                        Path to the Titanium Backup directory.
+  -A ARCHIVE_PATH, --archive-path ARCHIVE_PATH
+                        Path to the Archive directory.
+  -n, --dry-run         Print status, but copy/delete no files.
+  -v, --verbose         Print status and activity messages.
+  -V, --version         Return version number and exit.
+
 ```
 
 ## Example run
 ```
-Saving new  <co.happybits.marcopolo-f79465008ceaa147480058f995d5e951.apk.gz>
-Saving new  <com.asynchrony.emerson.sensi-094613883e8993402bdccc3844f422bd.apk.gz>
-Saving new  <dji.go.v4-a4c739c7d6565012736fed7ac7b51ed2.apk.gz>
-Saving new  <com.garmin.android.apps.connectmobile-a33eb6f1344892bf850cc8d69664be75.apk.gz>
-Saving new  <spinninghead.carhome-4ed856b57737c206e7483358e6e40f0f.apk.gz>
-Saving new  <org.prowl.torque-abe053808d26379578c999963e24e31c.apk.gz>
-Saving new  <com.eclipsim.gpsstatus2-515c7e3854d9d50fdc85b2376b12fe06.apk.gz>
-Removing not latest .properties and .tar.gz files for </<mypath to>/TiBuScrapeArchive/org.openintents.notepad-20181231-091734>
-Saving latest       .properties and .tar.gz files for </<mypath to>/TiBU/org.openintents.notepad-20190101-091923>
-Removing not latest .properties and .tar.gz files for </<mypath to>/TiBuScrapeArchive/at.increase.wakeonlan-20181231-091740>
-Saving latest       .properties and .tar.gz files for </<mypath to>/TiBU/at.increase.wakeonlan-20190101-091935>
+$ ./tibuscrape -T /<path to>/Dropbox/TiBU/ -A /<path to>/TiBuScrapeArchive --verbose
+
+Backup set latest datafiles:
+                    at.increase.wakeonlan__e741d5edc0d262a87c5e22ff704a4a3b -- 20190105-092720 -- Sat Jan  5 02:27:23 2019 -- Wake On Lan 1.4.9
+                   co.happybits.marcopolo__2860042565e0e574e4e5c2a69201a63a -- 20190105-091305 -- Sat Jan  5 02:26:15 2019 -- Marco Polo 0.202.0
+                   co.happybits.marcopolo__f79465008ceaa147480058f995d5e951 -- 20190104-091403 -- Fri Jan  4 02:27:09 2019 -- Marco Polo 0.201.1
 ...
-Saving latest       .properties and .tar.gz files for </<mypath to>/TiBU/com.asynchrony.emerson.sensi-20190101-091927>
-Saving latest       .properties and .tar.gz files for </<mypath to>/TiBU/dji.go.v4-20190101-090731>
-Removing not latest .properties and .tar.gz files for </<mypath to>/TiBuScrapeArchive/com.coinbase.android-20181231-090529>
-Saving latest       .properties and .tar.gz files for </<mypath to>/TiBU/com.coinbase.android-20190101-090517>
+                             com.keramidas.virtual.BLUETOOTH_PAIRINGS__none -- 20190105-090018 -- Sat Jan  5 02:00:18 2019 -- Bluetooth Pairings
+                                   com.keramidas.virtual.WIFI_AP_LIST__none -- 20190105-092723 -- Sat Jan  5 02:27:23 2019 -- Wi-Fi Access Points
+                      com.mycelium.wallet__ad897c34a193b423e6c499a6c4e0b37d -- 20190105-092615 -- Sat Jan  5 02:26:20 2019 -- Mycelium Wallet 2.12.0.18
+...
+                       com.xmarks.android__dfab0f7c89faac96b7dde992be9b9137 -- 20181218-092224 -- Tue Dec 18 02:22:27 2018 -- Xmarks 1.0.16
+
+Archive set latest datafiles:
+                    at.increase.wakeonlan__e741d5edc0d262a87c5e22ff704a4a3b -- 20190103-091748 -- Thu Jan  3 02:17:50 2019 -- Wake On Lan 1.4.9
+                   co.happybits.marcopolo__2860042565e0e574e4e5c2a69201a63a -- 20190105-091305 -- Sat Jan  5 02:26:15 2019 -- Marco Polo 0.202.0
+                   co.happybits.marcopolo__360897ef36bcc083db33e3989784bffa -- 20181231-091300 -- Mon Dec 31 02:16:45 2018 -- Marco Polo 0.193.0
+                   co.happybits.marcopolo__f79465008ceaa147480058f995d5e951 -- 20190104-091403 -- Fri Jan  4 02:27:09 2019 -- Marco Polo 0.201.1
+...
+                             com.keramidas.virtual.BLUETOOTH_PAIRINGS__none -- 20190105-090018 -- Sat Jan  5 02:00:18 2019 -- Bluetooth Pairings
+                                   com.keramidas.virtual.WIFI_AP_LIST__none -- 20190105-092723 -- Sat Jan  5 02:27:23 2019 -- Wi-Fi Access Points
+                      com.mycelium.wallet__867f22e8c397be29107ce21c596e7294 -- 20190104-092710 -- Fri Jan  4 02:27:10 2019 -- Mycelium Wallet 2.12.0.17
+..
+                       com.xmarks.android__dfab0f7c89faac96b7dde992be9b9137 -- Tue Dec 18 02:22:27 2018 -- Xmarks 1.0.16
+
+Transactions:
+Transactions:
+Saving new apk:          com.mycelium.wallet-ad897c34a193b423e6c499a6c4e0b37d.apk.gz
+Saving new   datafiles:  Wake On Lan 1.4.9 -- /mnt/raid1/share/public/DBox/Dropbox/TiBU/at.increase.wakeonlan-20190105-092720
+Removing old datafiles:  Wake On Lan 1.4.9 -- /mnt/raid1/share/backups/TiBuScrapeArchive/at.increase.wakeonlan-20190103-091748
+Saving new   datafiles:  Mycelium Wallet 2.12.0.18 -- /mnt/raid1/share/public/DBox/Dropbox/TiBU/com.mycelium.wallet-20190105-092615
 Final talley:
-     8 new .apks saved 
-    16 deleted .properties / .tar.gz pairs 
-    24   saved .properties / .tar.gz pairs
+     1 new saved .apk.gz files
+     0 missing   .apk.gz files
+     1 deleted datafiles
+     2   saved datafiles
+     0 skipped datafiles
 
 ```
 ## Known issues
-- No error is produced if the TIBU_PATH directory is not found.  No TiBU files will be found so the script simply exits.
-- If the ARCHIVE_PATH directory does not exist or temporarily cannot be reached the script will likely crash ungracefully.
-- Is there value in allowing TIBU_PATH and ARCHIVE_PATH to be specified on the command line?
+- none
 
 ## Revision history
+- 190105 v0.2 - Rewrite using .properties files internal data and not file datetime stamps.  Better logging.
 - 190101 New
