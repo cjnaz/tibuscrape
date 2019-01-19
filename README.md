@@ -11,11 +11,11 @@ This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or
 
 ## Setup and usage notes
 - tibuscrape runs on Linux or Windows (tested on Python 2.7 and 3.6).  
-- tibuscrape does not talk directly to the cloud service; rather, it relies on a local copy of the TiBU backup directory usually created by a local cloud sync agent or synced copies created by rclonesync or rclone.
+- tibuscrape does not talk directly to the cloud service; rather, it relies on a local copy of the TiBU backup directory usually created by a local cloud sync agent or synced copies created by [rclonesync](https://github.com/cjnaz/rclonesync-V2) or [rclone](https://rclone.org/).
 - Configure the `TIBU_PATH` and `ARCHIVE_PATH` vars in the script, or use the command line -T and -A switches.
 - Manually create the target archive directory.
-- Periodically, manually delete older archived app versions and their data files.  Run tibuscrape with the `--dry-run` switch to get a dump of the contents of the backup and archive contents.
-- Consider setting up a CRON job to run tibuscrape some time after your scheduled Titanium Backup and Dropbox sync run.  Example CRON:
+- Periodically, manually delete older archived app versions and their data files.  Run tibuscrape with the `--list` switch to get a dump of the contents of the Archive directory contents.
+- Consider setting up a cron job to run tibuscrape some time after your scheduled Titanium Backup and Dropbox sync run.  Example cron with output redirect to a log file:
 
 ```
 #        Minute  Hour    Day of Month   Month              Day of Week       Command    
@@ -27,8 +27,8 @@ This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or
 (on Windows:  `> py tibuscrape -h`)
 
 ```
-$ ./tibuscrape -h
-usage: tibuscrape [-h] [-T TIBU_PATH] [-A ARCHIVE_PATH] [-n] [-v] [-V]
+$ ./tibuscrape -A /mnt/raid1/share/backups/TiBuScrapeArchive --h
+usage: tibuscrape [-h] [-T TIBU_PATH] [-A ARCHIVE_PATH] [-n] [-l] [-v] [-V]
 
 Titanium Backup Scraper
 
@@ -39,6 +39,7 @@ optional arguments:
   -A ARCHIVE_PATH, --archive-path ARCHIVE_PATH
                         Path to the Archive directory.
   -n, --dry-run         Print status, but copy/delete no files.
+  -l, --list            Print content of the Archive directory and exit.
   -v, --verbose         Print status and activity messages.
   -V, --version         Return version number and exit.
 
@@ -72,7 +73,6 @@ Archive set latest datafiles:
                        com.xmarks.android__dfab0f7c89faac96b7dde992be9b9137 -- Tue Dec 18 02:22:27 2018 -- Xmarks 1.0.16
 
 Transactions:
-Transactions:
 Saving new apk:          com.mycelium.wallet-ad897c34a193b423e6c499a6c4e0b37d.apk.gz
 Saving new   datafiles:  Wake On Lan 1.4.9 -- /mnt/raid1/share/public/DBox/Dropbox/TiBU/at.increase.wakeonlan-20190105-092720
 Removing old datafiles:  Wake On Lan 1.4.9 -- /mnt/raid1/share/backups/TiBuScrapeArchive/at.increase.wakeonlan-20190103-091748
@@ -89,5 +89,6 @@ Final talley:
 - none
 
 ## Revision history
+- 190119 v0.3 - Added --list switch.
 - 190105 v0.2 - Rewrite using .properties files internal data and not file datetime stamps.  Better logging.
 - 190101 New

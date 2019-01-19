@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """Titanium Backup Scraper"""
-__version__ = "0.2 190105"
+__version__ = "v0.3 190119"
 
 #==========================================================
 #
@@ -10,8 +10,9 @@ __version__ = "0.2 190105"
 # For each .apk.gz version, capture the latest .properties and .tar.gz file pair associated
 #   with each .apk.gz version, deleting older .properties and .tar.gz file pairs
 #
-# 100105 0.2  Rewrite using .properties files data
-# 190101 0.1  New
+# 190119 v0.3  Added --list switch
+# 100105 v0.2  Rewrite using .properties files data
+# 190101 v0.1  New
 #
 # Changes pending
 #   
@@ -44,29 +45,30 @@ def main():
     key_length = 0
 
     # Import TiBU dataset info from .properties files
-    backup_dataset = {}
-    backup_propfiles = glob.glob(tibu_path  + "*.properties")
-    for propfile in backup_propfiles:
-        propfile_data = parse_properties(propfile)
-        key = propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
-        if len(key) > key_length:
-            key_length = len(key)
-        if key not in backup_dataset:
-            # print ("found new   key {} -- {}".format(key, time.asctime(time.localtime(propfile_data["epoch_time"]))))
-            backup_dataset[key] = propfile_data
-        else:
-            if propfile_data["epoch_time"] > backup_dataset[key]["epoch_time"]:
-                # print ("found newer key {} -- {}".format(key, time.asctime(time.localtime(propfile_data["epoch_time"]))))
+    if not list_archive:
+        backup_dataset = {}
+        backup_propfiles = glob.glob(tibu_path  + "*.properties")
+        for propfile in backup_propfiles:
+            propfile_data = parse_properties(propfile)
+            key = propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
+            if len(key) > key_length:
+                key_length = len(key)
+            if key not in backup_dataset:
+                # print ("found new   key {} -- {}".format(key, time.asctime(time.localtime(propfile_data["epoch_time"]))))
                 backup_dataset[key] = propfile_data
-    backup_dataset = collections.OrderedDict(sorted(backup_dataset.items()))
+            else:
+                if propfile_data["epoch_time"] > backup_dataset[key]["epoch_time"]:
+                    # print ("found newer key {} -- {}".format(key, time.asctime(time.localtime(propfile_data["epoch_time"]))))
+                    backup_dataset[key] = propfile_data
+        backup_dataset = collections.OrderedDict(sorted(backup_dataset.items()))
 
-    if verbose:
-        print ("\nBackup set latest datafiles:")    
-        for key in backup_dataset:
-            fmt_str = "{{:>{}}} -- {{}} -- {{}} -- {{}}".format(key_length +2)
-            print (fmt_str.format(
-                key, backup_dataset[key]["datafileRevID"],
-                time.asctime(time.localtime(backup_dataset[key]["epoch_time"])), backup_dataset[key]["app_gui_label"]))
+        if verbose:
+            print ("\nBackup set latest datafiles:")    
+            for key in backup_dataset:
+                fmt_str = "{{:>{}}} -- {{}} -- {{}} -- {{}}".format(key_length +2)
+                print (fmt_str.format(
+                    key, backup_dataset[key]["datafileRevID"],
+                    time.asctime(time.localtime(backup_dataset[key]["epoch_time"])), backup_dataset[key]["app_gui_label"]))
         
 
     # Import archive dataset info from .properties files
@@ -86,17 +88,21 @@ def main():
                 archive_dataset[key] = propfile_data
     archive_dataset = collections.OrderedDict(sorted(archive_dataset.items()))
 
-    if verbose:
+    if verbose or list_archive:
         print ("\nArchive set latest datafiles:")    
         for key in archive_dataset:
             fmt_str = "{{:>{}}} -- {{}} -- {{}} -- {{}}".format(key_length +2)
             print (fmt_str.format(
                 key, archive_dataset[key]["datafileRevID"],
                 time.asctime(time.localtime(archive_dataset[key]["epoch_time"])), archive_dataset[key]["app_gui_label"]))
-        print ("\nTransactions:")
+
+    if list_archive:
+        return
 
 
     # Archive any new .apk.gz files
+    if verbose:
+        print ("\nTransactions:")
     apks = glob.glob(tibu_path + "*.apk.gz")
     for apk_full_tibu_path in apks:
 
@@ -170,7 +176,7 @@ def main():
                     print ("MISSING .apk.gz -- {} -- {}".format(archive_dataset[key]["app_gui_label"], apk_gz))
           
 
-    print ("Final talley:\n  {:>4} new saved .apk.gz files\n  {:>4} missing   .apk.gz files\n  {:>4} deleted datafiles\n  {:>4}   saved datafiles\n  {:>4} skipped datafiles".format(
+    print ("Final tally:\n  {:>4} new saved .apk.gz files\n  {:>4} missing   .apk.gz files\n  {:>4} deleted datafiles\n  {:>4}   saved datafiles\n  {:>4} skipped datafiles".format(
         cnt_apks, cnt_missing_apks, cnt_deletes, cnt_adds, cnt_skipped))
 
 
@@ -242,6 +248,9 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--dry-run',
                         help="Print status, but copy/delete no files.",
                         action='store_true')
+    parser.add_argument('-l', '--list',
+                        help="Print content of the Archive directory and exit.",
+                        action='store_true')
     parser.add_argument('-v', '--verbose',
                         help="Print status and activity messages.",
                         action='store_true')
@@ -255,13 +264,15 @@ if __name__ == '__main__':
     tibu_path = args.tibu_path + '/'
     archive_path = args.archive_path + '/'
     verbose = args.verbose
+    list_archive = args.list
     dry_run = args.dry_run
     if dry_run:
         verbose = True
 
-    if not os.path.exists(tibu_path):
-        print ("Titanium backup directory path <{}> not found.".format(tibu_path))
-        exit()
+    if not list_archive:
+        if not os.path.exists(tibu_path):
+            print ("Titanium backup directory path <{}> not found.".format(tibu_path))
+            exit()
 
     if not os.path.exists(archive_path):
         print ("Archive directory path <{}> not found.".format(archive_path))
