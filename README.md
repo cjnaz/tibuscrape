@@ -14,7 +14,8 @@ This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or
 - tibuscrape does not talk directly to the cloud service; rather, it relies on a local copy of the TiBU backup directory usually created by a local cloud sync agent or synced copies created by [rclonesync](https://github.com/cjnaz/rclonesync-V2) or [rclone](https://rclone.org/).
 - Configure the `TIBU_PATH` and `ARCHIVE_PATH` vars in the script, or use the command line -T and -A switches.
 - Manually create the target archive directory.
-- Periodically, manually delete older archived app versions and their data files.  Run tibuscrape with the `--list` switch to get a dump of the contents of the Archive directory contents.
+- Periodically, manually delete older archived app versions and their data files.  Run `tibuscrape --list` switch to get a dump of the contents of the Archive directory contents.
+- To reinstall an archived app and data version, identify the .apk.gz version and its associated .properties/.tar.gz data files using `tibuscrape --list` and copy the files to the backup directory on your phone using a file manager app (I use Solid Explorer). Run Titanium Backup and drill down into the target app on the Backup/Restore tab.  Select to restore the App+Data for the older version.  You may have to uninstall the newer version first.
 - Consider setting up a cron job to run tibuscrape some time after your scheduled Titanium Backup and Dropbox sync run.  Example cron with output redirect to a log file:
 
 ```
@@ -72,23 +73,24 @@ Archive set latest datafiles:
 ..
                        com.xmarks.android__dfab0f7c89faac96b7dde992be9b9137 -- Tue Dec 18 02:22:27 2018 -- Xmarks 1.0.16
 
-Transactions:
-Saving new apk:          com.mycelium.wallet-ad897c34a193b423e6c499a6c4e0b37d.apk.gz
-Saving new   datafiles:  Wake On Lan 1.4.9 -- /mnt/raid1/share/public/DBox/Dropbox/TiBU/at.increase.wakeonlan-20190105-092720
-Removing old datafiles:  Wake On Lan 1.4.9 -- /mnt/raid1/share/backups/TiBuScrapeArchive/at.increase.wakeonlan-20190103-091748
-Saving new   datafiles:  Mycelium Wallet 2.12.0.18 -- /mnt/raid1/share/public/DBox/Dropbox/TiBU/com.mycelium.wallet-20190105-092615
-Final talley:
-     1 new saved .apk.gz files
-     0 missing   .apk.gz files
-     1 deleted datafiles
-     2   saved datafiles
-     0 skipped datafiles
+Archival operations tally:
+     0   saved .apk.gz files
+     0   saved datafiles
+     0 deleted datafiles
+     0 skipped new datafiles (due to missing backup .tar.gz file usually due to incomplete cloud sync)
 
+Archive integrity checks tally (should all be 0, run with --verbose for more info):
+     0 missing .apk.gz files (Archive has .properties that references a non-existing .apk.gz)
+     0 missing .tar.gz files (Archive has .properties but no matching .tar.gz)
+     0   extra .apk.gz files (Archive has no associated .properties/.tar.gz datafiles)
+     0   extra .tar.gz files (Archive has .tar.gz but no matching .properties)
+     0   extra datafiles (more than one datafile set for a given .apk.gz)
 ```
 ## Known issues
 - none
 
 ## Revision history
+- 190120 v0.4 - Added archive integrity checks
 - 190119 v0.3 - Added --list switch.
 - 190105 v0.2 - Rewrite using .properties files internal data and not file datetime stamps.  Better logging.
 - 190101 New
