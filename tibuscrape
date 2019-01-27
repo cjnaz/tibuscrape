@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """Titanium Backup Scraper"""
-__version__ = "v0.4 190122"
+__version__ = "v0.5 190126"
 
 #==========================================================
 #
@@ -9,6 +9,7 @@ __version__ = "v0.4 190122"
 # Accumulate .apk.gz versions from the TiBU dir into the archive dir.
 # For each .apk.gz version, capture the latest associated datafiles ().properties and .tar.gz file pair)
 #
+# 190126 v0.5  Improved log output
 # 190122 v0.4  Added archive integrity checks
 # 190119 v0.3  Added --list switch
 # 100105 v0.2  Rewrite using .properties files data
@@ -215,11 +216,11 @@ def scan_dir (dir_path, _verbose, check_extras=False):
     propfiles = glob.glob(dir_path  + "*.properties")
     for propfile in propfiles:
         propfile_data = parse_properties(propfile)
-        key = propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
-        if len(key) > key_length:       # Used for pretty printing
-            key_length = len(key)
+        key = propfile_data["app_gui_label"] + "__" + propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
+        if len(propfile_data["app_gui_label"]) > key_length:       # Used for pretty printing
+            key_length = len(propfile_data["app_gui_label"])
         if key not in dataset:
-            # print ("found new   key {} -- {}".format(key, time.asctime(time.localtime(propfile_data["epoch_time"]))))
+            # print ("found new key:  {} -- {}".format(key, propfile_data["local_time"]))
             dataset[key] = propfile_data
         else:
             if propfile_data["epoch_time"] > dataset[key]["epoch_time"]:
@@ -235,10 +236,12 @@ def scan_dir (dir_path, _verbose, check_extras=False):
 
     if _verbose:
         for key in dataset:
-            fmt_str = "{{:>{}}} -- {{}} -- {{}} -- {{}}".format(key_length +2)
+            fmt_str = "    {{:{}}} -- {{}} -- {{:32}} -- {{}}".format(key_length)
             print (fmt_str.format(
-                key, dataset[key]["datafileRevID"],
-                time.asctime(time.localtime(dataset[key]["epoch_time"])), dataset[key]["app_gui_label"]))
+                dataset[key]["app_gui_label"],
+                dataset[key]["local_time"],
+                dataset[key]["app_apk_md5"],
+                dataset[key]["app_datafile_basename_nopath"]))
     
     return dataset
 
@@ -250,8 +253,11 @@ def parse_properties (propfile):
         app_datafile_basename         /<full path>/org.openintents.notepad-20190102-092040 (without .properties)
         app_datafile_basename_nopath  org.openintents.notepad-20190102-092040 (without path or .properties)
         applicationId                 org.openintents.notepad
+        datafile_revId                20190102-092040
         app_gui_label                 OI Notepad 1.5.4
-        epoch_time                    1546420842.0 (decoded - Wed Jan  2 02:20:42 2019)
+        app_gui_basename              OI Notepad (no rev #) (not yet implemented)
+        epoch_time                    1546420842.0
+        local_time                    Wed Jan  2 02:20:42 2019
         app_apk_md5                   342b9a47a84b77e3092282328dc23286
     The caller stores this dictionary in its own backup or archive dictionary with the key:
         org.openintents.notepad__342b9a47a84b77e3092282328dc23286
@@ -286,9 +292,10 @@ def parse_properties (propfile):
     "app_datafile_basename":        propfile.replace(".properties",""),
     "app_datafile_basename_nopath": os.path.basename(propfile).replace(".properties",""),
     "applicationId":                os.path.basename(propfile).split('-')[0],
-    "datafileRevID":                (os.path.basename(propfile).split('-')[1] + '-' + os.path.basename(propfile).split('-')[2]).replace(".properties",""),
+    "datafile_revId":               (os.path.basename(propfile).split('-')[1] + '-' + os.path.basename(propfile).split('-')[2]).replace(".properties",""),
     "app_gui_label":                app_gui_label,
     "epoch_time":                   epoch_time,
+    "local_time":                   time.asctime(time.localtime(epoch_time)),
     "app_apk_md5":                  app_apk_md5}
 
     # if verbose:       # Uncomment for more detailed dump of each/all propfiles
@@ -296,10 +303,10 @@ def parse_properties (propfile):
     #     print ("{:>30} - {}".format("app_datafile_basename", data["app_datafile_basename"]))
     #     print ("{:>30} - {}".format("app_datafile_basename_nopath", data["app_datafile_basename_nopath"]))
     #     print ("{:>30} - {}".format("applicationId", data["applicationId"]))
-    #     print ("{:>30} - {}".format("datafileRevID", data["datafileRevID"]))
+    #     print ("{:>30} - {}".format("datafile_revId", data["datafile_revId"]))
     #     print ("{:>30} - {}".format("app_gui_label", data["app_gui_label"]))
-    #     print ("{:>30} - {}".format("time", time.asctime(time.localtime(data["epoch_time"]))))
-    #     print ("{:>30} - {}".format("time", data["epoch_time"]))
+    #     print ("{:>30} - {}".format("epoch_time", data["epoch_time"]))
+    #     print ("{:>30} - {}".format("local_time", data["local_time"])) # time.asctime(time.localtime(data["epoch_time"]))))
     #     print ("{:>30} - {}".format("app_apk_md5", data["app_apk_md5"]))
     
     return data
