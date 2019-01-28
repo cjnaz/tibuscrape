@@ -12,10 +12,11 @@ This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or
 ## Setup and usage notes
 - tibuscrape runs on Linux or Windows (tested on Python 2.7 and 3.6).  
 - tibuscrape does not talk directly to the cloud service; rather, it relies on a local copy of the TiBU backup directory usually created by a local cloud sync agent or synced copies created by [rclonesync](https://github.com/cjnaz/rclonesync-V2) or [rclone](https://rclone.org/).
-- Configure the `TIBU_PATH` and `ARCHIVE_PATH` vars in the script, or use the command line -T and -A switches.
+- Configure the `TIBU_PATH` and `ARCHIVE_PATH` constants in the script, or use the command line -T and -A switches.
 - Manually create the target archive directory.
-- Periodically, manually delete older archived app versions and their data files.  Run `tibuscrape --list` switch to get a dump of the contents of the Archive directory contents.
-- To reinstall an archived app version and its data, identify the .apk.gz version and its associated .properties/.tar.gz data files using `tibuscrape --list` and copy the files to the backup directory on your phone using a file manager app (I use [Solid Explorer](https://play.google.com/store/apps/details?id=pl.solidexplorer2&hl=en_US)). Run Titanium Backup and drill down into the target app on the Backup/Restore tab.  Select to restore the App+Data for the older version.  You may have to uninstall the newer version first.
+- The `--purge` switch may be used to automatically prune older versions from the archive.  If `--purge` is not specified then no files are deleted from the archive.  If `--purge` is specified, the default number of versions to keep is 3, but may be specified on the command line (i.e., `--purge 5` keeps 5 versions of each app).  You may also manually delete individual apps and their associated data files from the archive.
+- The `--list` switch may be used to identify .properties/.tar.gz/.apk.gz file sets for installing back on the phone or manual deletion.
+- To reinstall an archived app version and its data, copy the .apk.gz version and its associated .properties/.tar.gz data files to the backup directory on your phone using a file manager app (I use [Solid Explorer](https://play.google.com/store/apps/details?id=pl.solidexplorer2&hl=en_US)). Run Titanium Backup and drill down into the target app on the Backup/Restore tab.  Select to restore the App+Data for the older version.  You may have to uninstall the newer version first.
 - Consider setting up a cron job to run tibuscrape some time after your scheduled Titanium Backup and Dropbox sync run.  Example cron with output redirect to a log file:
 
 ```
@@ -28,8 +29,9 @@ This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or
 (on Windows:  `> py tibuscrape -h`)
 
 ```
-$ ./tibuscrape -A /mnt/raid1/share/backups/TiBuScrapeArchive --h
-usage: tibuscrape [-h] [-T TIBU_PATH] [-A ARCHIVE_PATH] [-n] [-l] [-v] [-V]
+$ ./tibuscrape -T /mnt/raid1/share/public/DBox/Dropbox/TiBU/ -A /mnt/raid1/share/backups/TiBuScrapeArchive --purge -n -h
+usage: tibuscrape [-h] [-T TIBU_PATH] [-A ARCHIVE_PATH] [-n] [-l]
+                  [--purge [PURGE]] [-v] [-V]
 
 Titanium Backup Scraper
 
@@ -39,11 +41,11 @@ optional arguments:
                         Path to the Titanium Backup directory.
   -A ARCHIVE_PATH, --archive-path ARCHIVE_PATH
                         Path to the Archive directory.
-  -n, --dry-run         Print status, but copy/delete no files.
+  -n, --dry-run         Copy/delete no files.
   -l, --list            Print content of the Archive directory and exit.
+  --purge [PURGE]       Keep only n most recent versions in the archive - default 3.
   -v, --verbose         Print status and activity messages.
   -V, --version         Return version number and exit.
-
 ```
 
 ## Example run
@@ -128,6 +130,7 @@ Archive integrity checks tally (should all be 0, run with --verbose for more inf
 - none
 
 ## Revision history
+- 190129 v0.5 - Added --purge switch and improved log output
 - 190122 v0.4 - Added archive integrity checks
 - 190119 v0.3 - Added --list switch.
 - 190105 v0.2 - Rewrite using .properties files internal data and not file datetime stamps.  Better logging.
