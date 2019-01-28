@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """Titanium Backup Scraper"""
-__version__ = "v0.4 190122"
+__version__ = "v0.5 190128"
 
 #==========================================================
 #
@@ -9,6 +9,7 @@ __version__ = "v0.4 190122"
 # Accumulate .apk.gz versions from the TiBU dir into the archive dir.
 # For each .apk.gz version, capture the latest associated datafiles ().properties and .tar.gz file pair)
 #
+# 190128 v0.5  Added --purge switch and improved log output
 # 190122 v0.4  Added archive integrity checks
 # 190119 v0.3  Added --list switch
 # 100105 v0.2  Rewrite using .properties files data
@@ -28,6 +29,7 @@ import collections
 # Configs / Constants
 TIBU_PATH =    "/path_to/Dropbox/TiBU/"
 ARCHIVE_PATH = "/path_to/TiBuScrapeArchive/"
+PURGE_CNT =    3  # Default number of versions to retain with --purge function
 
 # Globals
 cnt_extra_datafiles = 0     # Used in both main and scan_dir
@@ -48,96 +50,120 @@ def main():
     cnt_missing_tar_gzs = 0
     cnt_extra_apk_gzs = 0
     cnt_extra_tar_gzs = 0
+    cnt_purged = 0
     global cnt_extra_datafiles
 
 
-    # Import Titanium Backup and Archive datasets
     if not list_archive:
+        # Import Titanium Backup and Archive datasets
         if verbose:
             print ("\n***** Backup set latest datafiles *****")
         backup_dataset = scan_dir(tibu_path, verbose)
 
-    if verbose or list_archive:
-        print ("\n***** Archive set current datafiles *****")
-    archive_dataset = scan_dir(archive_path, verbose or list_archive)
-    if list_archive:
-        return
+        if verbose:
+            print ("\n***** Archive set preexisting datafiles *****")
+        archive_dataset = scan_dir(archive_path, verbose)
 
 
-    # Archive any new .apk.gz files
-    if verbose:
-        print ("\nArchival transactions:")
-    backupset_apks = glob.glob(tibu_path + "*.apk.gz")
-    for apk in backupset_apks:
-        if not os.path.exists(archive_path + os.path.basename(apk)):
-            if verbose:
-                print ("Saving new apk:          {}".format(os.path.basename(apk)))
-            cnt_apk_gzs += 1
-            if not dry_run:
-                try:
-                    shutil.copy2(apk, archive_path)  # copy2 retains the mod time
-                except Exception as e:
-                    print ("ERROR trying to copy new .apk.gz to the archive:\n  {}".format(e))
-
-
-    # Process datafile diffs
-    for key in backup_dataset:
-        copy_datafiles = False
-        remove_old = False
-        if key not in archive_dataset:
-            copy_datafiles = True
-        else:
-            if backup_dataset[key]["epoch_time"] > archive_dataset[key]["epoch_time"]:
-                copy_datafiles = True
-                remove_old = True
-
-        if copy_datafiles:
-            tar_gz = backup_dataset[key]["app_datafile_basename"] + ".tar.gz"
-            # print (tar_gz)
-            if not os.path.exists(tar_gz):
-                cnt_skipped += 1
+        # Archive any new .apk.gz files
+        if verbose:
+            print ("\n***** Archival transactions *****")
+        backupset_apks = glob.glob(tibu_path + "*.apk.gz")
+        for apk in backupset_apks:
+            if not os.path.exists(archive_path + os.path.basename(apk)):
                 if verbose:
-                    print ("SKIPPING due to missing .tar.gz -- {} -- {}".format(
-                        backup_dataset[key]["app_gui_label"],
-                        backup_dataset[key]["app_datafile_basename"]))
-                continue 
-            else:
-                cnt_adds += 1
-                if verbose:
-                    print ("Saving new   datafiles:  {} -- {}".format(
-                        backup_dataset[key]["app_gui_label"],
-                        backup_dataset[key]["app_datafile_basename"]))
+                    print ("Saving new apk:          {}".format(os.path.basename(apk)))
+                cnt_apk_gzs += 1
                 if not dry_run:
                     try:
-                        shutil.copy2(backup_dataset[key]["app_datafile_basename"] + ".properties", archive_path)
-                        shutil.copy2(tar_gz, archive_path)
+                        shutil.copy2(apk, archive_path)  # copy2 retains the mod time
                     except Exception as e:
-                        print ("ERROR trying to copy new .properties/.tar.gz datafiles to the archive:\n  {}".format(e))
+                        print ("ERROR trying to copy new .apk.gz to the archive:\n  {}".format(e))
 
-            if remove_old:
-                cnt_deletes += 1
-                if verbose:
-                    print ("Removing old datafiles:  {} -- {}".format(
-                        archive_dataset[key]["app_gui_label"],
-                        archive_dataset[key]["app_datafile_basename"]))
-                if not dry_run:
-                    try:    # normally, both files will be in the archive
-                        os.remove(archive_dataset[key]["app_datafile_basename"] + ".properties")
-                        os.remove(archive_dataset[key]["app_datafile_basename"] + ".tar.gz")
-                    except Exception as e:
-                        print ("ERROR trying to delete old .properties/.tar.gz datafiles from the archive:\n  {}".format(e))
 
-    print ("\nArchival operations tally:")
-    print ("  {:>4}   saved .apk.gz files".format(cnt_apk_gzs))
-    print ("  {:>4}   saved datafiles".format(cnt_adds))
-    print ("  {:>4} deleted datafiles".format(cnt_deletes))
-    print ("  {:>4} skipped new datafiles (due to missing backup .tar.gz file usually due to incomplete cloud sync)".format(cnt_skipped))
-                         
+        # Process datafile diffs
+        for key in backup_dataset:
+            copy_datafiles = False
+            remove_old = False
+            if key not in archive_dataset:
+                copy_datafiles = True
+            else:
+                if backup_dataset[key]["epoch_time"] > archive_dataset[key]["epoch_time"]:
+                    copy_datafiles = True
+                    remove_old = True
+
+            if copy_datafiles:
+                tar_gz = backup_dataset[key]["app_datafile_basename"] + ".tar.gz"
+                # print (tar_gz)
+                if not os.path.exists(tar_gz):
+                    cnt_skipped += 1
+                    if verbose:
+                        print ("SKIPPING due to missing .tar.gz -- {} -- {}".format(
+                            backup_dataset[key]["app_gui_label"],
+                            backup_dataset[key]["app_datafile_basename"]))
+                    continue 
+                else:
+                    cnt_adds += 1
+                    if verbose:
+                        print ("Saving new   datafiles:  {} -- {}".format(
+                            backup_dataset[key]["app_gui_label"],
+                            backup_dataset[key]["app_datafile_basename"]))
+                    if not dry_run:
+                        try:
+                            shutil.copy2(backup_dataset[key]["app_datafile_basename"] + ".properties", archive_path)
+                            shutil.copy2(tar_gz, archive_path)
+                        except Exception as e:
+                            print ("ERROR trying to copy new .properties/.tar.gz datafiles to the archive:\n  {}".format(e))
+
+                if remove_old:
+                    cnt_deletes += 1
+                    if verbose:
+                        print ("Removing old datafiles:  {} -- {}".format(
+                            archive_dataset[key]["app_gui_label"],
+                            archive_dataset[key]["app_datafile_basename"]))
+                    if not dry_run:
+                        try:    # normally, both files will be in the archive
+                            os.remove(archive_dataset[key]["app_datafile_basename"] + ".properties")
+                            os.remove(archive_dataset[key]["app_datafile_basename"] + ".tar.gz")
+                        except Exception as e:
+                            print ("ERROR trying to delete old .properties/.tar.gz datafiles from the archive:\n  {}".format(e))
+
+        print ("\nArchival transactions tally:")
+        print ("  {:>4}   saved .apk.gz files".format(cnt_apk_gzs))
+        print ("  {:>4}   saved datafiles".format(cnt_adds))
+        print ("  {:>4} deleted datafiles".format(cnt_deletes))
+        print ("  {:>4} skipped new datafiles (due to missing backup .tar.gz file usually due to incomplete cloud sync)".format(cnt_skipped))
+
+
+    # Purge older archives
+    if purge is not None:
+        if verbose:
+            print ("\n***** Purging archive to <{}> max versions *****".format(purge))
+
+        archive_dataset = scan_dir(archive_path)   # Refresh so that purge threshold count works correctly.
+        apps = {}
+        for archive_key in archive_dataset:
+            app_ID = archive_dataset[archive_key]["applicationId"]
+            item = [archive_dataset[archive_key]["epoch_time"], archive_key]
+            if app_ID not in apps:
+                apps[app_ID] = [item]
+            else:
+                apps[app_ID].extend([item])
+        
+        for app_ID in apps:
+            if len(apps[app_ID]) > purge:
+                # relying on the epoch_time of the backup rather than the app version number for determining oldest.
+                sorted_versions = sorted(apps[app_ID], key= lambda element: element[0]) # sort_key)
+                for xx in range (len(sorted_versions) - purge):
+                    cnt_purged += 1
+                    delete_dataset(archive_dataset[sorted_versions[xx][1]])
+
+        print ("\nPurged  {}  older apk.gz/.properties/.tar.gz sets from the Archive".format(cnt_purged))
+                            
 
     # Archive integrity checks
-    if verbose:
-        print ("\n\n***** Archive integrity checks *****")
-        print ("Updated Archive dataset:")
+    if verbose or list_archive:
+        print ("\n***** Archive current content and integrity checks *****")
     
     # Refresh the archive_dataset after the above transactions.  This run checks for extra datafile sets.
     archive_dataset = scan_dir(archive_path, verbose or list_archive, check_extras=True)
@@ -194,11 +220,11 @@ def main():
     print ("  {:>4}   extra .apk.gz files (Archive has no associated .properties/.tar.gz datafiles)".format(cnt_extra_apk_gzs))
     print ("  {:>4}   extra .tar.gz files (Archive has .tar.gz but no matching .properties)".format(cnt_extra_tar_gzs))
     print ("  {:>4}   extra datafiles     (More than one datafile set for a given .apk.gz)".format(cnt_extra_datafiles))
-
+        
     return
 
 
-def scan_dir (dir_path, _verbose, check_extras=False):
+def scan_dir (dir_path, _verbose=False, check_extras=False):
     """
     Scan the dir_path for .properties files and identify the most recent datafiles pair (.properties / .tar.gz) associated
     with each .apk.gz.  Return a sorted dictionary.
@@ -215,11 +241,11 @@ def scan_dir (dir_path, _verbose, check_extras=False):
     propfiles = glob.glob(dir_path  + "*.properties")
     for propfile in propfiles:
         propfile_data = parse_properties(propfile)
-        key = propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
-        if len(key) > key_length:       # Used for pretty printing
-            key_length = len(key)
+        key = propfile_data["app_gui_label"] + "__" + propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
+        if len(propfile_data["app_gui_label"]) > key_length:       # Used for pretty printing
+            key_length = len(propfile_data["app_gui_label"])
         if key not in dataset:
-            # print ("found new   key {} -- {}".format(key, time.asctime(time.localtime(propfile_data["epoch_time"]))))
+            # print ("found new key:  {} -- {}".format(key, propfile_data["local_time"]))
             dataset[key] = propfile_data
         else:
             if propfile_data["epoch_time"] > dataset[key]["epoch_time"]:
@@ -235,10 +261,12 @@ def scan_dir (dir_path, _verbose, check_extras=False):
 
     if _verbose:
         for key in dataset:
-            fmt_str = "{{:>{}}} -- {{}} -- {{}} -- {{}}".format(key_length +2)
+            fmt_str = "    {{:{}}} -- {{}} -- {{:32}} -- {{}}".format(key_length)
             print (fmt_str.format(
-                key, dataset[key]["datafileRevID"],
-                time.asctime(time.localtime(dataset[key]["epoch_time"])), dataset[key]["app_gui_label"]))
+                dataset[key]["app_gui_label"],
+                dataset[key]["local_time"],
+                dataset[key]["app_apk_md5"],
+                dataset[key]["app_datafile_basename_nopath"]))
     
     return dataset
 
@@ -250,8 +278,11 @@ def parse_properties (propfile):
         app_datafile_basename         /<full path>/org.openintents.notepad-20190102-092040 (without .properties)
         app_datafile_basename_nopath  org.openintents.notepad-20190102-092040 (without path or .properties)
         applicationId                 org.openintents.notepad
+        datafile_revId                20190102-092040
         app_gui_label                 OI Notepad 1.5.4
-        epoch_time                    1546420842.0 (decoded - Wed Jan  2 02:20:42 2019)
+        app_gui_basename              OI Notepad  (no rev #) (not yet implemented)
+        epoch_time                    1546420842.0
+        local_time                    Wed Jan  2 02:20:42 2019
         app_apk_md5                   342b9a47a84b77e3092282328dc23286
     The caller stores this dictionary in its own backup or archive dictionary with the key:
         org.openintents.notepad__342b9a47a84b77e3092282328dc23286
@@ -286,9 +317,10 @@ def parse_properties (propfile):
     "app_datafile_basename":        propfile.replace(".properties",""),
     "app_datafile_basename_nopath": os.path.basename(propfile).replace(".properties",""),
     "applicationId":                os.path.basename(propfile).split('-')[0],
-    "datafileRevID":                (os.path.basename(propfile).split('-')[1] + '-' + os.path.basename(propfile).split('-')[2]).replace(".properties",""),
+    "datafile_revId":               (os.path.basename(propfile).split('-')[1] + '-' + os.path.basename(propfile).split('-')[2]).replace(".properties",""),
     "app_gui_label":                app_gui_label,
     "epoch_time":                   epoch_time,
+    "local_time":                   time.asctime(time.localtime(epoch_time)),
     "app_apk_md5":                  app_apk_md5}
 
     # if verbose:       # Uncomment for more detailed dump of each/all propfiles
@@ -296,13 +328,41 @@ def parse_properties (propfile):
     #     print ("{:>30} - {}".format("app_datafile_basename", data["app_datafile_basename"]))
     #     print ("{:>30} - {}".format("app_datafile_basename_nopath", data["app_datafile_basename_nopath"]))
     #     print ("{:>30} - {}".format("applicationId", data["applicationId"]))
-    #     print ("{:>30} - {}".format("datafileRevID", data["datafileRevID"]))
+    #     print ("{:>30} - {}".format("datafile_revId", data["datafile_revId"]))
     #     print ("{:>30} - {}".format("app_gui_label", data["app_gui_label"]))
-    #     print ("{:>30} - {}".format("time", time.asctime(time.localtime(data["epoch_time"]))))
-    #     print ("{:>30} - {}".format("time", data["epoch_time"]))
+    #     print ("{:>30} - {}".format("epoch_time", data["epoch_time"]))
+    #     print ("{:>30} - {}".format("local_time", data["local_time"])) # time.asctime(time.localtime(data["epoch_time"]))))
     #     print ("{:>30} - {}".format("app_apk_md5", data["app_apk_md5"]))
     
     return data
+
+
+def delete_dataset (dataset):
+    """Delete the .apk.gz, .properties, and .tar.gz files from the archive for the given dataset.
+
+    A dataset is a dictionary as produced from parse_properties.
+    """
+    if dataset["app_apk_md5"] is not "none":
+        apk_gz = archive_path + dataset["applicationId"] + '-' + dataset["app_apk_md5"] + ".apk.gz"
+        if verbose:
+            print ("Removing old app file:   {}".format(apk_gz))
+        if not dry_run:
+            try:    # normally, both files will be in the archive
+                os.remove(apk_gz)
+            except Exception as e:
+                print ("ERROR trying to delete old application file from the archive:\n  {}".format(e))
+
+    datafile_base = archive_path + dataset["applicationId"] + '-' + dataset["datafile_revId"]
+    if verbose:
+        print ("Removing old datafiles:  {} .properties/.tar.gz".format(datafile_base))
+    if not dry_run:
+        try:    # normally, both files will be in the archive
+            os.remove(datafile_base + ".properties")
+            os.remove(datafile_base + ".tar.gz")
+        except Exception as e:
+            print ("ERROR trying to delete old .properties/.tar.gz datafiles from the archive:\n  {}".format(e))
+
+
 
 
 if __name__ == '__main__':
@@ -319,6 +379,11 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--list',
                         help="Print content of the Archive directory and exit.",
                         action='store_true')
+    parser.add_argument('--purge',
+                        help="Keep only n most recent versions in the archive - default {}.".format(PURGE_CNT),
+                        type=int,
+                        nargs='?',
+                        const=PURGE_CNT)
     parser.add_argument('-v', '--verbose',
                         help="Print status and activity messages.",
                         action='store_true')
@@ -334,14 +399,20 @@ if __name__ == '__main__':
     verbose = args.verbose
     list_archive = args.list
     dry_run = args.dry_run
+    purge = args.purge
+
+    if purge is not None:
+        if purge < 0:
+            print ("ERROR: --purge value ({}) must be >= 0.".format(purge))
+            exit()
 
     if not list_archive:
         if not os.path.exists(tibu_path):
-            print ("Titanium backup directory path <{}> not found.".format(tibu_path))
+            print ("ERROR: Titanium backup directory path <{}> not found.".format(tibu_path))
             exit()
 
     if not os.path.exists(archive_path):
-        print ("Archive directory path <{}> not found.".format(archive_path))
+        print ("ERROR: Archive directory path <{}> not found.".format(archive_path))
         exit()
 
     main()
