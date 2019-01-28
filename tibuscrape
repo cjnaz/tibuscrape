@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """Titanium Backup Scraper"""
-__version__ = "v0.5 190129"
+__version__ = "v0.5 190128"
 
 #==========================================================
 #
@@ -9,7 +9,7 @@ __version__ = "v0.5 190129"
 # Accumulate .apk.gz versions from the TiBU dir into the archive dir.
 # For each .apk.gz version, capture the latest associated datafiles ().properties and .tar.gz file pair)
 #
-# 190129 v0.5  Added --purge switch and improved log output
+# 190128 v0.5  Added --purge switch and improved log output
 # 190122 v0.4  Added archive integrity checks
 # 190119 v0.3  Added --list switch
 # 100105 v0.2  Rewrite using .properties files data
@@ -138,7 +138,7 @@ def main():
     # Purge older archives
     if purge is not None:
         if verbose:
-            print ("\n***** Purging archive to <{}> max datasets *****".format(purge))
+            print ("\n***** Purging archive to <{}> max versions *****".format(purge))
 
         archive_dataset = scan_dir(archive_path)   # Refresh so that purge threshold count works correctly.
         apps = {}
