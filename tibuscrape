@@ -406,7 +406,6 @@ if __name__ == '__main__':
             print ("ERROR: --purge value ({}) must be >= 0.".format(purge))
             exit()
 
-
     if not list_archive:
         if not os.path.exists(tibu_path):
             print ("ERROR: Titanium backup directory path <{}> not found.".format(tibu_path))
