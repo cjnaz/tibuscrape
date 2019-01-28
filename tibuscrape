@@ -136,9 +136,9 @@ def main():
 
 
     # Purge older archives
-    if purge:
+    if purge is not None:
         if verbose:
-            print ("\n***** Purging older archived datasets *****")
+            print ("\n***** Purging archive to <{}> max datasets *****".format(purge))
 
         archive_dataset = scan_dir(archive_path)   # Refresh so that purge threshold count works correctly.
         apps = {}
@@ -342,14 +342,15 @@ def delete_dataset (dataset):
 
     A dataset is a dictionary as produced from parse_properties.
     """
-    apk_gz = archive_path + dataset["applicationId"] + '-' + dataset["app_apk_md5"] + ".apk.gz"
-    if verbose:
-        print ("Removing old app file:   {}".format(apk_gz))
-    if not dry_run:
-        try:    # normally, both files will be in the archive
-            os.remove(apk_gz)
-        except Exception as e:
-            print ("ERROR trying to delete old application file from the archive:\n  {}".format(e))
+    if dataset["app_apk_md5"] is not "none":
+        apk_gz = archive_path + dataset["applicationId"] + '-' + dataset["app_apk_md5"] + ".apk.gz"
+        if verbose:
+            print ("Removing old app file:   {}".format(apk_gz))
+        if not dry_run:
+            try:    # normally, both files will be in the archive
+                os.remove(apk_gz)
+            except Exception as e:
+                print ("ERROR trying to delete old application file from the archive:\n  {}".format(e))
 
     datafile_base = archive_path + dataset["applicationId"] + '-' + dataset["datafile_revId"]
     if verbose:
@@ -400,13 +401,19 @@ if __name__ == '__main__':
     dry_run = args.dry_run
     purge = args.purge
 
+    if purge is not None:
+        if purge < 0:
+            print ("ERROR: --purge value ({}) must be >= 0.".format(purge))
+            exit()
+
+
     if not list_archive:
         if not os.path.exists(tibu_path):
-            print ("Titanium backup directory path <{}> not found.".format(tibu_path))
+            print ("ERROR: Titanium backup directory path <{}> not found.".format(tibu_path))
             exit()
 
     if not os.path.exists(archive_path):
-        print ("Archive directory path <{}> not found.".format(archive_path))
+        print ("ERROR: Archive directory path <{}> not found.".format(archive_path))
         exit()
 
     main()
