@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 """Titanium Backup Scraper"""
-__version__ = "v0.5 190128"
+__version__ = "v0.6 191007"
 
 #==========================================================
 #
-#  Chris Nelson, Jan 2019
+#  Chris Nelson   2019
 #
-# Accumulate .apk.gz versions from the TiBU dir into the archive dir.
+# Accumulate .apk.gz versions from the TitaniumBackup dir into the archive dir.
 # For each .apk.gz version, capture the latest associated datafiles ().properties and .tar.gz file pair)
 #
+# 191007 v0.6  Support .xml.gz files, such as from MESSAGES backups (SMS/MMS).  Archive list is sorted with case-ignore.
 # 190128 v0.5  Added --purge switch and improved log output
 # 190122 v0.4  Added archive integrity checks
 # 190119 v0.3  Added --list switch
@@ -27,17 +28,20 @@ import time
 import collections
 
 # Configs / Constants
-TIBU_PATH =    "/path_to/Dropbox/TiBU/"
+TIBU_PATH =    "/path_to/Dropbox/TitaniumBackup/"
 ARCHIVE_PATH = "/path_to/TiBuScrapeArchive/"
 PURGE_CNT =    3  # Default number of versions to retain with --purge function
 
 # Globals
 cnt_extra_datafiles = 0     # Used in both main and scan_dir
 
-# Example TiBU backup filenames:
+# Example TitaniumBackup backup filenames:
 # com.coinbase.android-a952de85ca2328a963c79c7ecbbc6588.apk.gz
 # com.coinbase.android-20181231-040413.properties
 # com.coinbase.android-20181231-040413.tar.gz
+#  or
+# com.keramidas.virtual.XML_MESSAGES-20191006-174511.properties
+# com.keramidas.virtual.XML_MESSAGES-20191006-174511.xml.gz
 
 
 def main():
@@ -47,9 +51,10 @@ def main():
     cnt_deletes = 0
     cnt_adds = 0
     cnt_missing_apk_gzs = 0
-    cnt_missing_tar_gzs = 0
+    cnt_missing_tar_xml_gzs = 0
     cnt_extra_apk_gzs = 0
     cnt_extra_tar_gzs = 0
+    cnt_extra_xml_gzs = 0
     cnt_purged = 0
     global cnt_extra_datafiles
 
@@ -94,11 +99,11 @@ def main():
 
             if copy_datafiles:
                 tar_gz = backup_dataset[key]["app_datafile_basename"] + ".tar.gz"
-                # print (tar_gz)
-                if not os.path.exists(tar_gz):
+                xml_gz = backup_dataset[key]["app_datafile_basename"] + ".xml.gz"
+                if not os.path.exists(tar_gz) and not os.path.exists(xml_gz):
                     cnt_skipped += 1
                     if verbose:
-                        print ("SKIPPING due to missing .tar.gz -- {} -- {}".format(
+                        print ("SKIPPING due to missing .tar/.xml.gz -- {} -- {}".format(
                             backup_dataset[key]["app_gui_label"],
                             backup_dataset[key]["app_datafile_basename"]))
                     continue 
@@ -111,9 +116,12 @@ def main():
                     if not dry_run:
                         try:
                             shutil.copy2(backup_dataset[key]["app_datafile_basename"] + ".properties", archive_path)
-                            shutil.copy2(tar_gz, archive_path)
+                            if os.path.exists(tar_gz):
+                                shutil.copy2(tar_gz, archive_path)
+                            if os.path.exists(xml_gz):
+                                shutil.copy2(xml_gz, archive_path)
                         except Exception as e:
-                            print ("ERROR trying to copy new .properties/.tar.gz datafiles to the archive:\n  {}".format(e))
+                            print ("ERROR trying to copy new .properties/.tar.gz/.xml.gz datafiles to the archive:\n  {}".format(e))
 
                 if remove_old:
                     cnt_deletes += 1
@@ -122,33 +130,46 @@ def main():
                             archive_dataset[key]["app_gui_label"],
                             archive_dataset[key]["app_datafile_basename"]))
                     if not dry_run:
-                        try:    # normally, both files will be in the archive
+                        try:    # normally, both files will be in the archive (.properties and one of .tar.gz or .xml.gz)
                             os.remove(archive_dataset[key]["app_datafile_basename"] + ".properties")
-                            os.remove(archive_dataset[key]["app_datafile_basename"] + ".tar.gz")
+                            if os.path.exists(tar_gz):
+                                os.remove(archive_dataset[key]["app_datafile_basename"] + ".tar.gz")
+                            if os.path.exists(xml_gz):
+                                os.remove(archive_dataset[key]["app_datafile_basename"] + ".xml.gz")
                         except Exception as e:
-                            print ("ERROR trying to delete old .properties/.tar.gz datafiles from the archive:\n  {}".format(e))
+                            print ("ERROR trying to delete old .properties/.tar.gz/.xml.gz datafiles from the archive:\n  {}".format(e))
 
         print ("\nArchival transactions tally:")
         print ("  {:>4}   saved .apk.gz files".format(cnt_apk_gzs))
         print ("  {:>4}   saved datafiles".format(cnt_adds))
         print ("  {:>4} deleted datafiles".format(cnt_deletes))
-        print ("  {:>4} skipped new datafiles (due to missing backup .tar.gz file usually due to incomplete cloud sync)".format(cnt_skipped))
+        print ("  {:>4} skipped new datafiles (due to missing backup .tar.gz/.xml.gz file usually due to incomplete cloud sync)".format(cnt_skipped))
 
 
     # Purge older archives
+    archive_dataset = scan_dir(archive_path)   # Refresh after above archive transactions.
+    apps = {}
+    for archive_key in archive_dataset:
+        app_ID = archive_dataset[archive_key]["applicationId"]
+        item = [archive_dataset[archive_key]["epoch_time"], archive_key]
+        if app_ID not in apps:
+            apps[app_ID] = [item]
+        else:
+            apps[app_ID].extend([item])
+
     if purge is not None:
         if verbose:
             print ("\n***** Purging archive to <{}> max versions *****".format(purge))
 
-        archive_dataset = scan_dir(archive_path)   # Refresh so that purge threshold count works correctly.
-        apps = {}
-        for archive_key in archive_dataset:
-            app_ID = archive_dataset[archive_key]["applicationId"]
-            item = [archive_dataset[archive_key]["epoch_time"], archive_key]
-            if app_ID not in apps:
-                apps[app_ID] = [item]
-            else:
-                apps[app_ID].extend([item])
+        # archive_dataset = scan_dir(archive_path)   # Refresh after above archive transactions.
+        # apps = {}
+        # for archive_key in archive_dataset:
+        #     app_ID = archive_dataset[archive_key]["applicationId"]
+        #     item = [archive_dataset[archive_key]["epoch_time"], archive_key]
+        #     if app_ID not in apps:
+        #         apps[app_ID] = [item]
+        #     else:
+        #         apps[app_ID].extend([item])
         
         for app_ID in apps:
             if len(apps[app_ID]) > purge:
@@ -158,7 +179,7 @@ def main():
                     cnt_purged += 1
                     delete_dataset(archive_dataset[sorted_versions[xx][1]])
 
-        print ("\nPurged  {}  older apk.gz/.properties/.tar.gz sets from the Archive".format(cnt_purged))
+        print ("\nPurged  {}  older apk.gz/.properties/.tar.gz/.xml.gz sets from the Archive".format(cnt_purged))
                             
 
     # Archive integrity checks
@@ -168,17 +189,17 @@ def main():
     # Refresh the archive_dataset after the above transactions.  This run checks for extra datafile sets.
     archive_dataset = scan_dir(archive_path, verbose or list_archive, check_extras=True)
 
-    # Check archive for missing .tar.gzs and .apk.gzs
+    # Check archive for missing .tar.gzs/xml.gzs and .apk.gzs
     for key in archive_dataset:
         tar_gz = archive_dataset[key]["app_datafile_basename"] + ".tar.gz"
-        if not os.path.exists(tar_gz):
-            cnt_missing_tar_gzs += 1
+        xml_gz = archive_dataset[key]["app_datafile_basename"] + ".xml.gz"
+        if not os.path.exists(tar_gz) and not os.path.exists(xml_gz):
+            cnt_missing_tar_xml_gzs += 1
             if verbose:
-                print ("MISSING .tar.gz for <{}>:  <{}>".format(archive_dataset[key]["app_gui_label"], os.path.basename(tar_gz)))
+                print ("MISSING .tar.gz/.xml.gz for <{}>:  <{}>".format(archive_dataset[key]["app_gui_label"], archive_dataset[key]['app_datafile_basename_nopath']))
 
         if archive_dataset[key]["app_apk_md5"] is not "none":
             apk_gz = archive_path + archive_dataset[key]["applicationId"] + "-" + archive_dataset[key]["app_apk_md5"] + ".apk.gz"
-            # print (apk_gz)
             if not os.path.exists(apk_gz):
                 cnt_missing_apk_gzs += 1
                 if verbose:
@@ -188,7 +209,6 @@ def main():
     # Check archive for .tar.gz files with no matching .properties files
     archive_tar_gz_files = glob.glob(archive_path  + "*.tar.gz")
     for tar_gz in archive_tar_gz_files:
-        # print (tar_gz)
         found = False
         for key in archive_dataset:
             if tar_gz.replace(".tar.gz","") == archive_dataset[key]["app_datafile_basename"]:
@@ -199,11 +219,23 @@ def main():
             if verbose:
                 print ("EXTRA   .tar.gz:  <{}>".format(os.path.basename(tar_gz)))
 
+    # Check archive for .xml.gz files with no matching .properties files
+    archive_xml_gz_files = glob.glob(archive_path  + "*.xml.gz")
+    for xml_gz in archive_xml_gz_files:
+        found = False
+        for key in archive_dataset:
+            if xml_gz.replace(".xml.gz","") == archive_dataset[key]["app_datafile_basename"]:
+                found = True
+                break
+        if not found:
+            cnt_extra_xml_gzs += 1
+            if verbose:
+                print ("EXTRA   .xml.gz:  <{}>".format(os.path.basename(xml_gz)))
+
     # Check archive for .apk.gzs with no matching datafile sets
     archive_apk_gz_files = glob.glob(archive_path  + "*.apk.gz")
     for apk_gz in archive_apk_gz_files:
         apk_md5 = os.path.basename(apk_gz).split("-")[1].replace(".apk.gz","")
-        # print (apk_md5)
         found = False
         for key in archive_dataset:
             if apk_md5 == archive_dataset[key]["app_apk_md5"]:
@@ -215,12 +247,15 @@ def main():
                 print ("EXTRA   .apk.gz:  <{}>".format(os.path.basename(apk_gz)))
 
     print ("\nArchive integrity checks tally (should all be 0, run with --verbose for more info):")
-    print ("  {:>4} missing .apk.gz files (Archive has .properties that references a non-existing .apk.gz)".format(cnt_missing_apk_gzs))
-    print ("  {:>4} missing .tar.gz files (Archive has .properties but no matching .tar.gz)".format(cnt_missing_tar_gzs))
-    print ("  {:>4}   extra .apk.gz files (Archive has no associated .properties/.tar.gz datafiles)".format(cnt_extra_apk_gzs))
-    print ("  {:>4}   extra .tar.gz files (Archive has .tar.gz but no matching .properties)".format(cnt_extra_tar_gzs))
-    print ("  {:>4}   extra datafiles     (More than one datafile set for a given .apk.gz)".format(cnt_extra_datafiles))
-        
+    print ("  {:>4} missing .apk.gz files         (Archive has .properties that references a non-existing .apk.gz)".format(cnt_missing_apk_gzs))
+    print ("  {:>4} missing .tar.gz/.xml.gz files (Archive has .properties but no matching .tar.gz/.xml.gz)".format(cnt_missing_tar_xml_gzs))
+    print ("  {:>4}   extra .apk.gz files         (Archive has no associated .properties/.tar.gz datafiles)".format(cnt_extra_apk_gzs))
+    print ("  {:>4}   extra .tar.gz files         (Archive has .tar.gz but no matching .properties)".format(cnt_extra_tar_gzs))
+    print ("  {:>4}   extra .xml.gz files         (Archive has .xml.gz but no matching .properties)".format(cnt_extra_xml_gzs))
+    print ("  {:>4}   extra datafiles             (More than one datafile set for a given .apk.gz)".format(cnt_extra_datafiles))
+
+    print ("\nArchive contains backups for  {}  apps with  {}  total versions".format(len(apps), len(archive_dataset)))
+
     return
 
 
@@ -231,7 +266,7 @@ def scan_dir (dir_path, _verbose=False, check_extras=False):
 
     dir_path is the full path to the local Titanium Backup dir, or to the local archive dir.
     check_extras is used in the Archive integrity check phase, where there should not be more than one datafile set referencing a 
-        given .apk.gz in the archive directory.
+    given .apk.gz in the archive directory.
     """
 
     dataset = {}
@@ -241,7 +276,8 @@ def scan_dir (dir_path, _verbose=False, check_extras=False):
     propfiles = glob.glob(dir_path  + "*.properties")
     for propfile in propfiles:
         propfile_data = parse_properties(propfile)
-        key = propfile_data["app_gui_label"] + "__" + propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
+        # key = propfile_data["app_gui_label"] + "__" + propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
+        key = propfile_data["app_gui_label"].lower() + "__" + propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
         if len(propfile_data["app_gui_label"]) > key_length:       # Used for pretty printing
             key_length = len(propfile_data["app_gui_label"])
         if key not in dataset:
@@ -283,7 +319,7 @@ def parse_properties (propfile):
         app_gui_basename              OI Notepad  (no rev #) (not yet implemented)
         epoch_time                    1546420842.0
         local_time                    Wed Jan  2 02:20:42 2019
-        app_apk_md5                   342b9a47a84b77e3092282328dc23286
+        app_apk_md5                   342b9a47a84b77e3092282328dc23286  or  "none"
     The caller stores this dictionary in its own backup or archive dictionary with the key:
         org.openintents.notepad__342b9a47a84b77e3092282328dc23286
 
@@ -338,7 +374,7 @@ def parse_properties (propfile):
 
 
 def delete_dataset (dataset):
-    """Delete the .apk.gz, .properties, and .tar.gz files from the archive for the given dataset.
+    """Delete the .apk.gz, .properties, and .tar.gz/.xml.gz files from the archive for the given dataset.
 
     A dataset is a dictionary as produced from parse_properties.
     """
@@ -347,20 +383,25 @@ def delete_dataset (dataset):
         if verbose:
             print ("Removing old app file:   {}".format(apk_gz))
         if not dry_run:
-            try:    # normally, both files will be in the archive
+            try:
                 os.remove(apk_gz)
             except Exception as e:
                 print ("ERROR trying to delete old application file from the archive:\n  {}".format(e))
 
     datafile_base = archive_path + dataset["applicationId"] + '-' + dataset["datafile_revId"]
     if verbose:
-        print ("Removing old datafiles:  {} .properties/.tar.gz".format(datafile_base))
+        print ("Removing old datafiles:  {} .properties/.tar.gz/.xml.gz".format(datafile_base))
     if not dry_run:
-        try:    # normally, both files will be in the archive
+        try:    # normally, both files will be in the archive (.properties and one of .tar.gz or .xml.gz)
             os.remove(datafile_base + ".properties")
             os.remove(datafile_base + ".tar.gz")
+            if os.path.exists(datafile_base + ".tar.gz"):
+                os.remove(datafile_base + ".tar.gz")
+            if os.path.exists(datafile_base + ".xml.gz"):
+                os.remove(datafile_base + ".xml.gz")
+
         except Exception as e:
-            print ("ERROR trying to delete old .properties/.tar.gz datafiles from the archive:\n  {}".format(e))
+            print ("ERROR trying to delete old .properties/.tar.gz/.xml.gz datafiles from the archive:\n  {}".format(e))
 
 
 
