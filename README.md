@@ -2,16 +2,16 @@
 
 tibuscrape creates an archive of the versions of apps and their latest data files from your Titanium Backup.  
 
-Each time that you update an app on your phone, TiBU normally creates a backup of the .apk file and the associated data files (.properties and .tar.gz).
-Each successive TiBU run creates new data files up to your rolling "Max backup history" setting, and after that number of runs the older .apk version and it's data files are deleted forever.  
+Each time that you update an app on your phone, Titanium Backup normally creates a backup of the .apk file and the associated data files (.properties and .tar.gz or .xml.gz).
+Each successive Titanium Backup run creates new data files up to your rolling "Max backup history" setting, and after that number of runs the older .apk version and it's data files are deleted forever.  
 
 For example, I have "Max backup history" set to 4 and run the backup nightly.  This means that if I update an app I only have up to four days to find out that I'd rather stay on the older version.
 
-This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or Google Drive copy of the TiBU "Remote location" backup directory and keeps an "archive" copy of every backed-up .apk version and the latest data files associated with that .apk version._** tibuscrape does not modify or delete any files in the TiBU backup directory.
+This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or Google Drive copy of the TitaniumBackup "Remote location" backup directory and keeps an "archive" copy of every backed-up .apk version and the latest data files associated with that .apk version._** tibuscrape does not modify or delete any files in the TiBU backup directory.
 
 ## Setup and usage notes
 - tibuscrape runs on Linux or Windows (tested on Python 2.7 and 3.6).  
-- tibuscrape does not talk directly to the cloud service; rather, it relies on a local copy of the TiBU backup directory usually created by a local cloud sync agent or synced copies created by [rclonesync](https://github.com/cjnaz/rclonesync-V2) or [rclone](https://rclone.org/).
+- tibuscrape does not talk directly to the cloud service; rather, it relies on a local copy of the TitaniumBackup directory usually created by a local cloud sync agent or synced copies created by [rclonesync](https://github.com/cjnaz/rclonesync-V2) or [rclone](https://rclone.org/).
 - Configure the `TIBU_PATH` and `ARCHIVE_PATH` constants in the script, or use the command line -T and -A switches.
 - Manually create the target archive directory.
 - The `--purge` switch may be used to automatically prune older versions from the archive.  If `--purge` is not specified then no files are deleted from the archive.  If `--purge` is specified, the default number of versions to keep is 3, but may be specified on the command line (i.e., `--purge 5` keeps 5 versions of each app).  `--purge 0` will delete everything from the archive (you be warned).  You may also manually delete individual apps and their associated data files from the archive.
