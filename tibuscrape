@@ -9,14 +9,16 @@ __version__ = "v0.6 191007"
 # Accumulate .apk.gz versions from the TitaniumBackup dir into the archive dir.
 # For each .apk.gz version, capture the latest associated datafiles ().properties and .tar.gz file pair)
 #
-# 191007 v0.6  Support .xml.gz files, such as from MESSAGES backups (SMS/MMS).  Archive list is sorted with case-ignore.
+# 191007 v0.6  Support .xml.gz files, such as from MESSAGES backups (SMS/MMS).
+#   Archive list is sorted with case-ignore.  Added --summary switch.
 # 190128 v0.5  Added --purge switch and improved log output
 # 190122 v0.4  Added archive integrity checks
 # 190119 v0.3  Added --list switch
 # 100105 v0.2  Rewrite using .properties files data
 # 190101 v0.1  New
 #
-# Changes pending
+# Changes pending, Known issues
+#   UNC characters in app names are not printed correctly.  This is messy to fix between Python 2.7 and 3.x, and on Windows.
 #   
 #==========================================================
 
@@ -139,11 +141,12 @@ def main():
                         except Exception as e:
                             print ("ERROR trying to delete old .properties/.tar.gz/.xml.gz datafiles from the archive:\n  {}".format(e))
 
-        print ("\nArchival transactions tally:")
-        print ("  {:>4}   saved .apk.gz files".format(cnt_apk_gzs))
-        print ("  {:>4}   saved datafiles".format(cnt_adds))
-        print ("  {:>4} deleted datafiles".format(cnt_deletes))
-        print ("  {:>4} skipped new datafiles (due to missing backup .tar.gz/.xml.gz file usually due to incomplete cloud sync)".format(cnt_skipped))
+        if summary or verbose:
+            print ("\nArchival transactions tally:")
+            print ("  {:>4}   saved .apk.gz files".format(cnt_apk_gzs))
+            print ("  {:>4}   saved datafiles".format(cnt_adds))
+            print ("  {:>4} deleted datafiles".format(cnt_deletes))
+            print ("  {:>4} skipped new datafiles (due to missing backup .tar.gz/.xml.gz file usually due to incomplete cloud sync)".format(cnt_skipped))
 
 
     # Purge older archives
@@ -161,16 +164,6 @@ def main():
         if verbose:
             print ("\n***** Purging archive to <{}> max versions *****".format(purge))
 
-        # archive_dataset = scan_dir(archive_path)   # Refresh after above archive transactions.
-        # apps = {}
-        # for archive_key in archive_dataset:
-        #     app_ID = archive_dataset[archive_key]["applicationId"]
-        #     item = [archive_dataset[archive_key]["epoch_time"], archive_key]
-        #     if app_ID not in apps:
-        #         apps[app_ID] = [item]
-        #     else:
-        #         apps[app_ID].extend([item])
-        
         for app_ID in apps:
             if len(apps[app_ID]) > purge:
                 # relying on the epoch_time of the backup rather than the app version number for determining oldest.
@@ -179,7 +172,8 @@ def main():
                     cnt_purged += 1
                     delete_dataset(archive_dataset[sorted_versions[xx][1]])
 
-        print ("\nPurged  {}  older apk.gz/.properties/.tar.gz/.xml.gz sets from the Archive".format(cnt_purged))
+        if verbose or summary:
+            print ("\nPurged  {}  older apk.gz/.properties/.tar.gz/.xml.gz sets from the Archive".format(cnt_purged))
                             
 
     # Archive integrity checks
@@ -246,15 +240,16 @@ def main():
             if verbose:
                 print ("EXTRA   .apk.gz:  <{}>".format(os.path.basename(apk_gz)))
 
-    print ("\nArchive integrity checks tally (should all be 0, run with --verbose for more info):")
-    print ("  {:>4} missing .apk.gz files         (Archive has .properties that references a non-existing .apk.gz)".format(cnt_missing_apk_gzs))
-    print ("  {:>4} missing .tar.gz/.xml.gz files (Archive has .properties but no matching .tar.gz/.xml.gz)".format(cnt_missing_tar_xml_gzs))
-    print ("  {:>4}   extra .apk.gz files         (Archive has no associated .properties/.tar.gz datafiles)".format(cnt_extra_apk_gzs))
-    print ("  {:>4}   extra .tar.gz files         (Archive has .tar.gz but no matching .properties)".format(cnt_extra_tar_gzs))
-    print ("  {:>4}   extra .xml.gz files         (Archive has .xml.gz but no matching .properties)".format(cnt_extra_xml_gzs))
-    print ("  {:>4}   extra datafiles             (More than one datafile set for a given .apk.gz)".format(cnt_extra_datafiles))
+    if verbose or summary or list_archive:
+        print ("\nArchive integrity checks tally (should all be 0, run with --verbose for more info):")
+        print ("  {:>4} missing .apk.gz files         (Archive has .properties that references a non-existing .apk.gz)".format(cnt_missing_apk_gzs))
+        print ("  {:>4} missing .tar.gz/.xml.gz files (Archive has .properties but no matching .tar.gz/.xml.gz)".format(cnt_missing_tar_xml_gzs))
+        print ("  {:>4}   extra .apk.gz files         (Archive has no associated .properties/.tar.gz datafiles)".format(cnt_extra_apk_gzs))
+        print ("  {:>4}   extra .tar.gz files         (Archive has .tar.gz but no matching .properties)".format(cnt_extra_tar_gzs))
+        print ("  {:>4}   extra .xml.gz files         (Archive has .xml.gz but no matching .properties)".format(cnt_extra_xml_gzs))
+        print ("  {:>4}   extra datafiles             (More than one datafile set for a given .apk.gz)".format(cnt_extra_datafiles))
 
-    print ("\nArchive contains backups for  {}  apps with  {}  total versions".format(len(apps), len(archive_dataset)))
+        print ("\nArchive contains backups for  {}  apps with  {}  total versions".format(len(apps), len(archive_dataset)))
 
     return
 
@@ -296,8 +291,8 @@ def scan_dir (dir_path, _verbose=False, check_extras=False):
     dataset = collections.OrderedDict(sorted(dataset.items()))
 
     if _verbose:
+        fmt_str = "    {{:{}}} -- {{}} -- {{:32}} -- {{}}".format(key_length)
         for key in dataset:
-            fmt_str = "    {{:{}}} -- {{}} -- {{:32}} -- {{}}".format(key_length)
             print (fmt_str.format(
                 dataset[key]["app_gui_label"],
                 dataset[key]["local_time"],
@@ -425,6 +420,9 @@ if __name__ == '__main__':
                         type=int,
                         nargs='?',
                         const=PURGE_CNT)
+    parser.add_argument('-s', '--summary',
+                        help="Print an operations summary.",
+                        action='store_true')
     parser.add_argument('-v', '--verbose',
                         help="Print status and activity messages.",
                         action='store_true')
@@ -437,6 +435,7 @@ if __name__ == '__main__':
 
     tibu_path = args.tibu_path + '/'
     archive_path = args.archive_path + '/'
+    summary = args.summary
     verbose = args.verbose
     list_archive = args.list
     dry_run = args.dry_run
