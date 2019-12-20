@@ -7,17 +7,25 @@ Each successive Titanium Backup run creates new data files up to your rolling "M
 
 For example, I have "Max backup history" set to 4 and run the backup nightly.  This means that if I update an app I only have up to four days to find out that I'd rather stay on the older version.
 
-This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or Google Drive copy of the TitaniumBackup "Remote location" backup directory and keeps an "archive" copy of every backed-up .apk version and the latest data files associated with that .apk version._** tibuscrape does not modify or delete any files in the TiBU backup directory.
+This is where tibuscrape comes in:  **_tibuscrape monitors your local Dropbox or Google Drive copy of the TitaniumBackup "Remote location" backup directory and keeps an "archive" copy of every backed-up .apk version and --the latest-- data files associated with that .apk version._** tibuscrape does not modify or delete any files in the TiBU backup directory.
+
+**Definitions and key concpets:**
+- Most apps have .tar.gz files, but some have .xml.gz files instead, such as the Messages backup.  An app data backup will have either a .tar.gz or .xml.gz, shorthand noted here as _.tar.gz/.xml.gz_.
+- Most apps have a .apk.gz file, but some Android system backup items do not.  They are noted with an .apk.gz of _none_.
+- For tibuscrape, an _AppDataSet_ is the collection of .properties, .tar.gz/.xml.gz, and their associated .apk.gz file.  In the example below, there are two AppDataSets in the archive for CamScanner (version for 5.9.0, and 5.9.1), and the datafiles for version 5.9.1 were updated on this run.  
+- tibuscrape retains only the most recent AppDataSet info for _each version_ of an app, and up to the `--purge` count number of versions are retained in the archive for each app.
+
 ## Changes in the most recent release
-- 191007 v0.6 - Support .xml.gz files, such as from MESSAGES backups (SMS/MMS).  Archive list is sorted with case-ignored.  Added --summary switch.
+- 191216 v0.7  Support AppDataSet versions of apps with "none" apk.gz files.  Prior releases kept only a single (latest) AppDataSet.  Note that since there are no app versions (because there is no .apk.gz), retaining a number of versions by tibuscrape is equivalent to retining a number of versions in Titanium Backup.  List AppDataSet sizes in MB.
+
 ## Setup and usage notes
 - tibuscrape runs on Linux or Windows (tested on Python 2.7 and 3.7).  
 - tibuscrape does not talk directly to the cloud service; rather, it relies on a local copy of the TitaniumBackup directory usually created by a local cloud sync agent or synced copies created by [rclonesync](https://github.com/cjnaz/rclonesync-V2) or [rclone](https://rclone.org/).
 - Configure the `TIBU_PATH` and `ARCHIVE_PATH` constants in the script, or use the command line -T and -A switches.
 - Manually create the target archive directory.
-- The `--purge` switch may be used to automatically prune older versions from the archive.  If `--purge` is not specified then no files are deleted from the archive.  If `--purge` is specified, the default number of versions to keep is 3, but may be specified on the command line (i.e., `--purge 5` keeps 5 versions of each app).  `--purge 0` will delete everything from the archive (you be warned).  You may also manually delete individual apps and their associated data files from the archive.
-- The `--list` switch may be used to identify .properties/.tar.gz/.xml.gz/.apk.gz file sets for installing back on the phone or manual deletion.  Note that `--list` skips the backup-set --to-- archive-set comparison and archival transactions, and only lists the current content of the archive.
-- To reinstall an archived app version and its data, copy the .apk.gz version and its associated .properties/.tar.gz/.xml.gz data files to the backup directory on your phone using a file manager app (I use [Solid Explorer](https://play.google.com/store/apps/details?id=pl.solidexplorer2&hl=en_US)). Run Titanium Backup and drill down into the target app on the Backup/Restore tab.  Select to restore the App+Data for the older version.  You may have to uninstall the current version first.
+- The `--purge` switch may be used to automatically prune older versions from the archive.  If `--purge` is not specified then no files are deleted from the archive.  If `--purge` is specified, the default number of versions to keep is 3, but may be specified on the command line (i.e., `--purge 5` keeps 5 versions of each app).  `--purge 0` will delete everything from the archive (you be warned). `--purge` is available even in `--list` mode. You may also manually delete individual apps and their associated data files from the archive.
+- The `--list` switch may be used to identify AppDataSets for installing back on the phone or for manual deletion.  Note that `--list` skips the backup-set --to-- archive-set comparison and archival transactions, and only lists the current content of the archive.
+- To reinstall an AppDataSet copy the .apk.gz version and its associated .properties/.tar.gz/.xml.gz data files to the backup directory on your phone using a file manager app (I use [Solid Explorer](https://play.google.com/store/apps/details?id=pl.solidexplorer2&hl=en_US)). Run Titanium Backup and drill down into the target app on the Backup/Restore tab.  Select to restore the App+Data for the older version.  You may have to uninstall the current version first.
 - Consider setting up a cron job to run tibuscrape some time after your scheduled Titanium Backup and Dropbox sync run.  Example cron with output redirect to a log file:
 
 ```
@@ -80,7 +88,8 @@ Archive contains backups for  76  apps with  214  total versions
 $ ./tibuscrape -T /<path_to>/Dropbox/TiBU/ -A /<path_to>/TiBuScrapeArchive --verbose --purge
 
 ***** Backup set latest datafiles *****
-    Amazon Kindle 8.14.1.0                      -- Mon Jan 28 11:02:44 2019 -- d9082798a9deee56e5d392220ae2ddec -- com.amazon.kindle-20190128-175851
+    Amazon Kindle 8.14.1.0                      --   70.7 MB -- Mon Jan 28 11:02:44 2019 -- d9082798a9deee56e5d392220ae2ddec -- com.amazon.kindle-20190128-175851
+                (All lines actually list the AppDataSet size, as shown above.)
     Amazon Shopping 18.2.0.100                  -- Mon Jan 28 11:03:00 2019 -- 675a8939665613908ee908fadbbda99c -- com.amazon.mShop.android.shopping-20190128-180244
     Bluetooth Connect and Play 3.19             -- Mon Jan 28 11:03:01 2019 -- dc8d7a66d5c2271b2fda8774ba3d1543 -- com.cp2.start.and.play.music.player-20190128-180300
     Bluetooth Pairings                          -- Mon Jan 28 11:03:01 2019 -- none                             -- com.keramidas.virtual.BLUETOOTH_PAIRINGS-20190128-180301
@@ -109,7 +118,6 @@ $ ./tibuscrape -T /<path_to>/Dropbox/TiBU/ -A /<path_to>/TiBuScrapeArchive --ver
     b\u00b7hyve 1.7.30                          -- Mon Jan 28 02:04:38 2019 -- 981f04bc7ae5b6b4ba64eaed4cdd1481 -- com.orbit.orbitsmarthome-20190128-090437
     Calendar 6.0.12-224984167-release           -- Thu Jan 24 02:04:35 2019 -- 7eb1f865be1747d48cb08acb5722c124 -- com.google.android.calendar-20190124-090432
     Calendar 6.0.18-228718019-release           -- Mon Jan 28 02:04:41 2019 -- 236fd5c0321e3fbd97d74995b8bac03e -- com.google.android.calendar-20190128-090439
-    CamScanner 5.8.7.20181212                   -- Sun Jan 20 09:38:32 2019 -- none                             -- com.intsig.camscanner-20190120-163536
     CamScanner 5.9.0.20190116                   -- Sun Jan 27 02:09:16 2019 -- 9a7bce8e67acd25e06385efeb3661fce -- com.intsig.camscanner-20190127-090651
     CamScanner 5.9.1.20190126                   -- Mon Jan 28 02:07:34 2019 -- 3fdd290f93765b1703c36ba1393fa7eb -- com.intsig.camscanner-20190128-090442
 ...
@@ -172,7 +180,6 @@ Purged  0  older apk.gz/.properties/.tar.gz sets from the Archive
     b\u00b7hyve 1.7.30                          -- Mon Jan 28 11:03:26 2019 -- 981f04bc7ae5b6b4ba64eaed4cdd1481 -- com.orbit.orbitsmarthome-20190128-180325
     Calendar 6.0.12-224984167-release           -- Thu Jan 24 02:04:35 2019 -- 7eb1f865be1747d48cb08acb5722c124 -- com.google.android.calendar-20190124-090432
     Calendar 6.0.18-228718019-release           -- Mon Jan 28 11:03:29 2019 -- 236fd5c0321e3fbd97d74995b8bac03e -- com.google.android.calendar-20190128-180326
-    CamScanner 5.8.7.20181212                   -- Sun Jan 20 09:38:32 2019 -- none                             -- com.intsig.camscanner-20190120-163536
     CamScanner 5.9.0.20190116                   -- Sun Jan 27 02:09:16 2019 -- 9a7bce8e67acd25e06385efeb3661fce -- com.intsig.camscanner-20190127-090651
     CamScanner 5.9.1.20190126                   -- Mon Jan 28 11:05:51 2019 -- 3fdd290f93765b1703c36ba1393fa7eb -- com.intsig.camscanner-20190128-180329
 ...
@@ -200,6 +207,7 @@ Archive contains backups for  76  apps with  214  total versions
 - none
 
 ## Revision history
+- 191217 v0.7  Support AppDataSet versions of apps with "none" apk.gz files.  List AppDataSet sizes in MB.
 - 191007 v0.6 - Support .xml.gz files, such as from MESSAGES backups (SMS/MMS).  Archive list is sorted with case-ignore.  Added --summary switch.
 - 190128 v0.5 - Added --purge switch and improved log output
 - 190122 v0.4 - Added archive integrity checks

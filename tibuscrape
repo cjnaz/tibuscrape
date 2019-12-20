@@ -1,6 +1,11 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """Titanium Backup Scraper"""
-__version__ = "v0.6 191007"
+
+from __future__ import unicode_literals  # This sets py2.7 default string literal to unicode from str.  No 'u' required on strings.
+from __future__ import print_function    # This redefines print as a function, as in py3.  Forces writing compatible code.
+
+__version__ = "v0.7 191217"
 
 #==========================================================
 #
@@ -9,6 +14,7 @@ __version__ = "v0.6 191007"
 # Accumulate .apk.gz versions from the TitaniumBackup dir into the archive dir.
 # For each .apk.gz version, capture the latest associated datafiles ().properties and .tar.gz file pair)
 #
+# 191217 v0.7  Support AppDataSet versions of apps with "none" apk.gz files.  List AppDataSet sizes in MB.
 # 191007 v0.6  Support .xml.gz files, such as from MESSAGES backups (SMS/MMS).
 #   Archive list is sorted with case-ignore.  Added --summary switch.
 # 190128 v0.5  Added --purge switch and improved log output
@@ -18,7 +24,8 @@ __version__ = "v0.6 191007"
 # 190101 v0.1  New
 #
 # Changes pending, Known issues
-#   UNC characters in app names are not printed correctly.  This is messy to fix between Python 2.7 and 3.x, and on Windows.
+#   
+#  Unicode chars in app names (app_gui_label) show as \u00A0.  This is as they are in the .properties.
 #   
 #==========================================================
 
@@ -125,7 +132,9 @@ def main():
                         except Exception as e:
                             print ("ERROR trying to copy new .properties/.tar.gz/.xml.gz datafiles to the archive:\n  {}".format(e))
 
-                if remove_old:
+                # if remove_old and archive_dataset[key]["app_apk_md5"] is not "none":  #TODO
+                # if remove_old and archive_dataset[key]["app_apk_md5"] != "none":  #TODO
+                if remove_old: # Will only apply to apps with .apk.gz files.  Apps without .apk.gzs will have unique keys.
                     cnt_deletes += 1
                     if verbose:
                         print ("Removing old datafiles:  {} -- {}".format(
@@ -150,19 +159,19 @@ def main():
 
 
     # Purge older archives
-    archive_dataset = scan_dir(archive_path)   # Refresh after above archive transactions.
-    apps = {}
-    for archive_key in archive_dataset:
-        app_ID = archive_dataset[archive_key]["applicationId"]
-        item = [archive_dataset[archive_key]["epoch_time"], archive_key]
-        if app_ID not in apps:
-            apps[app_ID] = [item]
-        else:
-            apps[app_ID].extend([item])
-
     if purge is not None:
         if verbose:
             print ("\n***** Purging archive to <{}> max versions *****".format(purge))
+
+        archive_dataset = scan_dir(archive_path)   # Refresh after above archive transactions.
+        apps = {}
+        for archive_key in archive_dataset:
+            app_ID = archive_dataset[archive_key]["applicationId"]
+            item = [archive_dataset[archive_key]["epoch_time"], archive_key]
+            if app_ID not in apps:
+                apps[app_ID] = [item]
+            else:
+                apps[app_ID].extend([item])
 
         for app_ID in apps:
             if len(apps[app_ID]) > purge:
@@ -170,7 +179,7 @@ def main():
                 sorted_versions = sorted(apps[app_ID], key= lambda element: element[0]) # sort_key)
                 for xx in range (len(sorted_versions) - purge):
                     cnt_purged += 1
-                    delete_dataset(archive_dataset[sorted_versions[xx][1]])
+                    delete_appdataset(archive_dataset[sorted_versions[xx][1]])
 
         if verbose or summary:
             print ("\nPurged  {}  older apk.gz/.properties/.tar.gz/.xml.gz sets from the Archive".format(cnt_purged))
@@ -180,8 +189,15 @@ def main():
     if verbose or list_archive:
         print ("\n***** Archive current content and integrity checks *****")
     
-    # Refresh the archive_dataset after the above transactions.  This run checks for extra datafile sets.
-    archive_dataset = scan_dir(archive_path, verbose or list_archive, check_extras=True)
+    archive_dataset = scan_dir(archive_path, verbose or list_archive, check_extras=True)    # Refresh the archive_dataset after the above transactions.  This run checks for extra datafile sets.
+    apps = {}
+    for archive_key in archive_dataset:
+        app_ID = archive_dataset[archive_key]["applicationId"]
+        item = [archive_dataset[archive_key]["epoch_time"], archive_key]
+        if app_ID not in apps:
+            apps[app_ID] = [item]
+        else:
+            apps[app_ID].extend([item])
 
     # Check archive for missing .tar.gzs/xml.gzs and .apk.gzs
     for key in archive_dataset:
@@ -192,7 +208,7 @@ def main():
             if verbose:
                 print ("MISSING .tar.gz/.xml.gz for <{}>:  <{}>".format(archive_dataset[key]["app_gui_label"], archive_dataset[key]['app_datafile_basename_nopath']))
 
-        if archive_dataset[key]["app_apk_md5"] is not "none":
+        if archive_dataset[key]["app_apk_md5"] != "none":
             apk_gz = archive_path + archive_dataset[key]["applicationId"] + "-" + archive_dataset[key]["app_apk_md5"] + ".apk.gz"
             if not os.path.exists(apk_gz):
                 cnt_missing_apk_gzs += 1
@@ -271,8 +287,12 @@ def scan_dir (dir_path, _verbose=False, check_extras=False):
     propfiles = glob.glob(dir_path  + "*.properties")
     for propfile in propfiles:
         propfile_data = parse_properties(propfile)
-        # key = propfile_data["app_gui_label"] + "__" + propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
-        key = propfile_data["app_gui_label"].lower() + "__" + propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
+        if propfile_data["app_apk_md5"] != "none":
+            key = propfile_data["app_gui_label"].lower() + "__" + propfile_data["applicationId"] + "__" + propfile_data["app_apk_md5"]
+            # Ex: "oi notepad 1.5.4__org.openintents.notepad__342b9a47a84b77e3092282328dc23286"
+        else:   # The key is different for apps without .apk.gz files so that multiple versions may be accumulated.
+            key = propfile_data["app_gui_label"].lower() + "__" + propfile_data["app_datafile_basename_nopath"] + "__none"
+            # Ex: "messages (sms & mms)__com.keramidas.virtual.XML_MESSAGES-20191113-071029__none"
         if len(propfile_data["app_gui_label"]) > key_length:       # Used for pretty printing
             key_length = len(propfile_data["app_gui_label"])
         if key not in dataset:
@@ -291,10 +311,11 @@ def scan_dir (dir_path, _verbose=False, check_extras=False):
     dataset = collections.OrderedDict(sorted(dataset.items()))
 
     if _verbose:
-        fmt_str = "    {{:{}}} -- {{}} -- {{:32}} -- {{}}".format(key_length)
+        fmt_str = "    {{:{}}} -- {{:>6.1f}} MB -- {{}} -- {{:32}} -- {{}}".format(key_length)
         for key in dataset:
             print (fmt_str.format(
                 dataset[key]["app_gui_label"],
+                dataset[key]["sizeMB"],
                 dataset[key]["local_time"],
                 dataset[key]["app_apk_md5"],
                 dataset[key]["app_datafile_basename_nopath"]))
@@ -315,6 +336,7 @@ def parse_properties (propfile):
         epoch_time                    1546420842.0
         local_time                    Wed Jan  2 02:20:42 2019
         app_apk_md5                   342b9a47a84b77e3092282328dc23286  or  "none"
+        sizeMB                        42.891133308410645  (float, size in MB)
     The caller stores this dictionary in its own backup or archive dictionary with the key:
         org.openintents.notepad__342b9a47a84b77e3092282328dc23286
 
@@ -343,8 +365,19 @@ def parse_properties (propfile):
                 app_gui_label = line.split('=')[1].strip()
             if "app_apk_md5" in line:
                 app_apk_md5 = line.split('=')[1].strip()
+    
+    sizeMB = float(os.path.getsize(propfile))/(2**20)
+    tar_gz = propfile.replace(".properties",'.tar.gz')
+    if os.path.exists(tar_gz):
+        sizeMB += float(os.path.getsize(tar_gz))/(2**20)
+    xml_gz = propfile.replace(".properties",'.xml.gz')
+    if os.path.exists(xml_gz):
+        sizeMB += float(os.path.getsize(xml_gz))/(2**20)
+    apk_gz = propfile.split('-')[0] + '-' + app_apk_md5 + ".apk.gz"
+    if os.path.exists(apk_gz):
+        sizeMB += float(os.path.getsize(apk_gz))/(2**20)
         
-    data = {
+    appdataset = {
     "app_datafile_basename":        propfile.replace(".properties",""),
     "app_datafile_basename_nopath": os.path.basename(propfile).replace(".properties",""),
     "applicationId":                os.path.basename(propfile).split('-')[0],
@@ -352,29 +385,31 @@ def parse_properties (propfile):
     "app_gui_label":                app_gui_label,
     "epoch_time":                   epoch_time,
     "local_time":                   time.asctime(time.localtime(epoch_time)),
-    "app_apk_md5":                  app_apk_md5}
+    "app_apk_md5":                  app_apk_md5,
+    "sizeMB":                       sizeMB}
 
     # if verbose:       # Uncomment for more detailed dump of each/all propfiles
     #     print ("\n{}".format(propfile))
-    #     print ("{:>30} - {}".format("app_datafile_basename", data["app_datafile_basename"]))
-    #     print ("{:>30} - {}".format("app_datafile_basename_nopath", data["app_datafile_basename_nopath"]))
-    #     print ("{:>30} - {}".format("applicationId", data["applicationId"]))
-    #     print ("{:>30} - {}".format("datafile_revId", data["datafile_revId"]))
-    #     print ("{:>30} - {}".format("app_gui_label", data["app_gui_label"]))
-    #     print ("{:>30} - {}".format("epoch_time", data["epoch_time"]))
-    #     print ("{:>30} - {}".format("local_time", data["local_time"])) # time.asctime(time.localtime(data["epoch_time"]))))
-    #     print ("{:>30} - {}".format("app_apk_md5", data["app_apk_md5"]))
+    #     print ("{:>30} - {}".format("app_datafile_basename", appdataset["app_datafile_basename"]))
+    #     print ("{:>30} - {}".format("app_datafile_basename_nopath", appdataset["app_datafile_basename_nopath"]))
+    #     print ("{:>30} - {}".format("applicationId", appdataset["applicationId"]))
+    #     print ("{:>30} - {}".format("datafile_revId", appdataset["datafile_revId"]))
+    #     print ("{:>30} - {}".format("app_gui_label", appdataset["app_gui_label"]))
+    #     print ("{:>30} - {}".format("epoch_time", appdataset["epoch_time"]))
+    #     print ("{:>30} - {}".format("local_time", appdataset["local_time"]))
+    #     print ("{:>30} - {}".format("app_apk_md5", appdataset["app_apk_md5"]))
+    #     print ("{:>30} - {}".format("sizeMB", appdataset["sizeMB"]))
     
-    return data
+    return appdataset
 
 
-def delete_dataset (dataset):
-    """Delete the .apk.gz, .properties, and .tar.gz/.xml.gz files from the archive for the given dataset.
+def delete_appdataset (appdataset):
+    """Delete the .apk.gz, .properties, and .tar.gz/.xml.gz files from the archive for the given appdataset.
 
-    A dataset is a dictionary as produced from parse_properties.
+    A appdataset is a dictionary as produced from parse_properties.
     """
-    if dataset["app_apk_md5"] is not "none":
-        apk_gz = archive_path + dataset["applicationId"] + '-' + dataset["app_apk_md5"] + ".apk.gz"
+    if appdataset["app_apk_md5"] != "none":
+        apk_gz = archive_path + appdataset["applicationId"] + '-' + appdataset["app_apk_md5"] + ".apk.gz"
         if verbose:
             print ("Removing old app file:   {}".format(apk_gz))
         if not dry_run:
@@ -383,21 +418,20 @@ def delete_dataset (dataset):
             except Exception as e:
                 print ("ERROR trying to delete old application file from the archive:\n  {}".format(e))
 
-    datafile_base = archive_path + dataset["applicationId"] + '-' + dataset["datafile_revId"]
+    datafile_base = archive_path + appdataset["applicationId"] + '-' + appdataset["datafile_revId"]
     if verbose:
         print ("Removing old datafiles:  {} .properties/.tar.gz/.xml.gz".format(datafile_base))
     if not dry_run:
         try:    # normally, both files will be in the archive (.properties and one of .tar.gz or .xml.gz)
             os.remove(datafile_base + ".properties")
-            os.remove(datafile_base + ".tar.gz")
-            if os.path.exists(datafile_base + ".tar.gz"):
-                os.remove(datafile_base + ".tar.gz")
-            if os.path.exists(datafile_base + ".xml.gz"):
-                os.remove(datafile_base + ".xml.gz")
-
+            tar_gz = datafile_base + ".tar.gz"
+            if os.path.exists(tar_gz):
+                os.remove(tar_gz)
+            xml_gz = datafile_base + ".xml.gz"
+            if os.path.exists(xml_gz):
+                os.remove(xml_gz)
         except Exception as e:
             print ("ERROR trying to delete old .properties/.tar.gz/.xml.gz datafiles from the archive:\n  {}".format(e))
-
 
 
 
